@@ -4,7 +4,7 @@
   * @file           : main.c
   * @brief          : X-NUCLEO-GFX01M2 LCD demo for the NUCLEO-L496ZG-P
   *
-  * This demo drives the 2.2" ILI9341 QVGA display on the X-NUCLEO-GFX01M2
+  * This test demo drives the 2.2" ILI9341 QVGA display on the X-NUCLEO-GFX01M2
   * expansion board over SPI1 and cycles through a few simple graphics demos:
   * color bars, filled/outlined shapes, text, and a live joystick (B1)
   * readout. See Drivers/BSP/GFX01M2 for the small display driver used here.
