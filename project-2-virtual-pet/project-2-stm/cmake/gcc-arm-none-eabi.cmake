@@ -4,16 +4,27 @@ set(CMAKE_SYSTEM_PROCESSOR          arm)
 set(CMAKE_C_COMPILER_ID GNU)
 set(CMAKE_CXX_COMPILER_ID GNU)
 
-# Some default GCC settings
-# arm-none-eabi- must be part of path environment
+# Some default GCC settings. Prefer a toolchain on PATH, but also support the
+# copy bundled with STM32CubeIDE on Windows.
 set(TOOLCHAIN_PREFIX                arm-none-eabi-)
 
-set(CMAKE_C_COMPILER                ${TOOLCHAIN_PREFIX}gcc)
+set(_ARM_GCC_HINTS)
+if(WIN32)
+    file(GLOB _STM32CUBE_GCC_DIRS
+        "C:/ST/STM32CubeIDE_*/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.*/tools/bin"
+        "C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.*/tools/bin"
+    )
+    list(SORT _STM32CUBE_GCC_DIRS ORDER DESCENDING)
+    list(APPEND _ARM_GCC_HINTS ${_STM32CUBE_GCC_DIRS})
+endif()
+
+find_program(CMAKE_C_COMPILER NAMES ${TOOLCHAIN_PREFIX}gcc HINTS ${_ARM_GCC_HINTS} REQUIRED)
+get_filename_component(_ARM_GCC_BIN_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
 set(CMAKE_ASM_COMPILER              ${CMAKE_C_COMPILER})
-set(CMAKE_CXX_COMPILER              ${TOOLCHAIN_PREFIX}g++)
-set(CMAKE_LINKER                    ${TOOLCHAIN_PREFIX}g++)
-set(CMAKE_OBJCOPY                   ${TOOLCHAIN_PREFIX}objcopy)
-set(CMAKE_SIZE                      ${TOOLCHAIN_PREFIX}size)
+find_program(CMAKE_CXX_COMPILER NAMES ${TOOLCHAIN_PREFIX}g++ HINTS "${_ARM_GCC_BIN_DIR}" REQUIRED)
+find_program(CMAKE_LINKER NAMES ${TOOLCHAIN_PREFIX}g++ HINTS "${_ARM_GCC_BIN_DIR}" REQUIRED)
+find_program(CMAKE_OBJCOPY NAMES ${TOOLCHAIN_PREFIX}objcopy HINTS "${_ARM_GCC_BIN_DIR}" REQUIRED)
+find_program(CMAKE_SIZE NAMES ${TOOLCHAIN_PREFIX}size HINTS "${_ARM_GCC_BIN_DIR}" REQUIRED)
 
 set(CMAKE_EXECUTABLE_SUFFIX_ASM     ".elf")
 set(CMAKE_EXECUTABLE_SUFFIX_C       ".elf")
