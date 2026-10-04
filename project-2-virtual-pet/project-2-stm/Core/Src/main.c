@@ -38,6 +38,20 @@
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
 
+/* Test bitmap for graphics demo */
+static const uint16_t test_bitmap[8 * 8] =
+{
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0
+};
+
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -47,6 +61,8 @@ static void Demo_ColorBars(void);
 static void Demo_Shapes(void);
 static void Demo_Text(void);
 static void Demo_Joystick(void);
+
+static void Graphics_Test(void);
 
 /* Joystick (B1) bit flags returned by Joystick_Read() */
 #define JOY_LEFT_MASK   (1U << 0)
@@ -87,6 +103,13 @@ int main(void)
 
   /* Initialize the LCD and show a splash screen */
   ILI9341_Init(&hspi1);
+
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+
+  ILI9341_DrawRGB565Bitmap( 100, 100, 8, 8, test_bitmap);
+
+  Graphics_Test();
+
   ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
   ILI9341_DrawString(30, 40, "NUCLEO-L496ZG-P", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
   HAL_Delay(2000);
@@ -189,6 +212,30 @@ static void Demo_Joystick(void)
     ILI9341_DrawString(10, 70, line, ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 2);
     HAL_Delay(50);
   }
+}
+
+static void Graphics_Test(void)
+{
+    // Clear display
+    ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+
+    // Text with foreground/background colors
+    ILI9341_DrawString( 10, 10, "GRAPHICS TEST",ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK,2);
+
+    // Pixel
+    ILI9341_DrawPixel(20, 50, ILI9341_COLOR_RED);
+
+    // Line
+    ILI9341_DrawLine(20, 70,200, 70, ILI9341_COLOR_YELLOW);
+
+    // Rectangle
+    ILI9341_DrawRect(20, 90, 80, 50, ILI9341_COLOR_GREEN);
+
+    // Filled rectangle
+    ILI9341_FillRect(120, 90, 80, 50, ILI9341_COLOR_BLUE);
+
+    // More text
+    ILI9341_DrawString(20, 170, "PIXEL LINE RECT", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
 }
 
 /**
