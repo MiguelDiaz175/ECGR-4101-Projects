@@ -34,9 +34,24 @@
 #include "main.h"
 #include "ili9341.h"
 #include "gfx01m2_conf.h"
+#include "pet.h"
+
+
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
+static const uint16_t test_bitmap[8 * 8] =
+{
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0
+};
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -47,6 +62,7 @@ static void Demo_ColorBars(void);
 static void Demo_Shapes(void);
 static void Demo_Text(void);
 static void Demo_Joystick(void);
+static void Demo_Pet(void);
 
 /* Joystick (B1) bit flags returned by Joystick_Read() */
 #define JOY_LEFT_MASK   (1U << 0)
@@ -87,14 +103,18 @@ int main(void)
 
   /* Initialize the LCD and show a splash screen */
   ILI9341_Init(&hspi1);
-  ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawString(30, 40, "NUCLEO-L496ZG-P", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
-  HAL_Delay(2000);
-
+  //ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+  //ILI9341_DrawString(30, 40, "NUCLEO-L496ZG-P", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
+  //HAL_Delay(2000);
+  Pet_Init();
+  Demo_Pet();
   /* Infinite loop: cycle through the demo pages */
   while (1)
   {
-    Demo_ColorBars();
+    Pet_Update();
+    Demo_Pet();
+    HAL_Delay(2000);
+    /**Demo_ColorBars();
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
     HAL_Delay(1500);
 
@@ -108,7 +128,33 @@ int main(void)
 
     Demo_Joystick();
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    **/
+
   }
+}
+
+static void Demo_Pet(void)
+{
+  int hunger = Pet_GetHunger();
+  uint16_t hunger_width = hunger * 2;
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+
+  /* Pet placeholder */
+  ILI9341_DrawRGB565Bitmap( 100, 100, 8, 8, test_bitmap);
+
+  /* Hunger */
+  ILI9341_DrawString(20, 218, "HUNGER",
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+
+  ILI9341_FillRect(20, 235, 200, 15, ILI9341_COLOR_WHITE);
+  ILI9341_FillRect(20, 235, hunger_width, 15, ILI9341_COLOR_GREEN);
+
+  /* Happiness */
+  ILI9341_DrawString(20, 268, "HAPPINESS",
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+
+  ILI9341_FillRect(20, 285, 200, 15, ILI9341_COLOR_WHITE);
+  ILI9341_FillRect(20, 285, 170, 15, ILI9341_COLOR_GREEN);
 }
 
 /**
