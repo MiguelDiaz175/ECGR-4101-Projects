@@ -123,6 +123,67 @@ void ILI9341_Init(SPI_HandleTypeDef *hspi)
     ILI9341_FillScreen(ILI9341_COLOR_BLACK);
 }
 
+void ILI9341_DrawRGB565Bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t *bitmap)
+{
+    uint16_t row;
+    uint16_t col;
+    static uint8_t row_buf[ILI9341_WIDTH * 2];
+
+    if ((bitmap == NULL) ||
+        (x >= ILI9341_WIDTH) ||
+        (y >= ILI9341_HEIGHT) ||
+        (w == 0) ||
+        (h == 0))
+    {
+        return;
+    }
+
+    /* Clip the bitmap if it extends past the display edge. */
+    uint16_t draw_w = w;
+    uint16_t draw_h = h;
+
+    if ((uint32_t)x + draw_w > ILI9341_WIDTH)
+    {
+        draw_w = ILI9341_WIDTH - x;
+    }
+
+    if ((uint32_t)y + draw_h > ILI9341_HEIGHT)
+    {
+        draw_h = ILI9341_HEIGHT - y;
+    }
+
+    LCD_SetAddressWindow(
+        x,
+        y,
+        (uint16_t)(x + draw_w - 1),
+        (uint16_t)(y + draw_h - 1));
+
+    HAL_GPIO_WritePin(LCD_DC_GPIO_Port, LCD_DC_Pin, GPIO_PIN_SET);
+    LCD_CS_Low();
+
+    for (row = 0; row < draw_h; row++)
+    {
+        for (col = 0; col < draw_w; col++)
+        {
+            uint16_t color = bitmap[(uint32_t)row * w + col];
+
+            row_buf[2 * col] =
+                (uint8_t)(color >> 8);
+
+            row_buf[2 * col + 1] =
+                (uint8_t)(color & 0xFF);
+        }
+
+        HAL_SPI_Transmit(
+            ili9341_hspi,
+            row_buf,
+            (uint16_t)(draw_w * 2),
+            HAL_MAX_DELAY);
+    }
+
+    LCD_CS_High();
+}
+
 void ILI9341_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color)
 {
     /* static: avoids re-reserving 480 bytes on the stack on every call - this

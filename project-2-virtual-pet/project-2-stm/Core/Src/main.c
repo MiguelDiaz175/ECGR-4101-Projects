@@ -4,7 +4,7 @@
   * @file           : main.c
   * @brief          : X-NUCLEO-GFX01M2 LCD demo for the NUCLEO-L496ZG-P
   *
-  * This demo drives the 2.2" ILI9341 QVGA display on the X-NUCLEO-GFX01M2
+  * This test demo drives the 2.2" ILI9341 QVGA display on the X-NUCLEO-GFX01M2
   * expansion board over SPI1 and cycles through a few simple graphics demos:
   * color bars, filled/outlined shapes, text, and a live joystick (B1)
   * readout. See Drivers/BSP/GFX01M2 for the small display driver used here.
@@ -34,9 +34,22 @@
 #include "main.h"
 #include "ili9341.h"
 #include "gfx01m2_conf.h"
+#include "pet.h"
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
+static const uint16_t test_bitmap[8 * 8] =
+{
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
+
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
+    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0
+};
 
 /* Test bitmap for graphics demo */
 static const uint16_t test_bitmap[8 * 8] =
@@ -56,11 +69,12 @@ static const uint16_t test_bitmap[8 * 8] =
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
-
 static void Demo_ColorBars(void);
 static void Demo_Shapes(void);
 static void Demo_Text(void);
 static void Demo_Joystick(void);
+static void Demo_Pet(void);
+static void Dead_Pet(void);
 
 static void Graphics_Test(void);
 
@@ -85,6 +99,7 @@ static uint8_t Joystick_Read(void)
   return state;
 }
 
+Pet myPet;
 /**
   * @brief  The application entry point.
   * @retval int
@@ -103,6 +118,11 @@ int main(void)
 
   /* Initialize the LCD and show a splash screen */
   ILI9341_Init(&hspi1);
+  //ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+  //ILI9341_DrawString(30, 40, "NUCLEO-L496ZG-P", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
+  //HAL_Delay(2000);
+  Pet_Init(&myPet);
+  Demo_Pet();
 
   ILI9341_FillScreen(ILI9341_COLOR_BLACK);
 
@@ -117,7 +137,10 @@ int main(void)
   /* Infinite loop: cycle through the demo pages */
   while (1)
   {
-    Demo_ColorBars();
+    Pet_Update(&myPet);
+    Demo_Pet();
+    HAL_Delay(2000);
+    /**Demo_ColorBars();
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
     HAL_Delay(1500);
 
@@ -131,7 +154,43 @@ int main(void)
 
     Demo_Joystick();
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    **/
+
   }
+}
+
+static void Demo_Pet(void)
+{
+  int hunger = Pet_GetHunger(&myPet);
+  int happiness = Pet_GetHappiness(&myPet);
+  uint16_t hunger_width = hunger * 2;
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+
+  /* Pet placeholder */
+  ILI9341_DrawRGB565Bitmap( 100, 100, 8, 8, test_bitmap);
+
+  /* Hunger */
+  ILI9341_DrawString(20, 218, "HUNGER",
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+
+  ILI9341_FillRect(20, 235, 200, 15, ILI9341_COLOR_WHITE);
+  ILI9341_FillRect(20, 235, hunger_width, 15, ILI9341_COLOR_GREEN);
+
+  /* Happiness */
+  ILI9341_DrawString(20, 268, "HAPPINESS",
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+
+  ILI9341_FillRect(20, 285, 200, 15, ILI9341_COLOR_WHITE);
+  ILI9341_FillRect(20, 285, 170, 15, ILI9341_COLOR_GREEN);
+}
+
+static void Dead_Pet(void)
+{
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+  ILI9341_DrawString(20, 100, "YOUR PET DIED",
+                     ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 2);
+  ILI9341_DrawString(20, 130, "PRESS RESET TO RESTART",
+                     ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 2);
 }
 
 /**
