@@ -36,8 +36,6 @@
 #include "gfx01m2_conf.h"
 #include "pet.h"
 
-
-
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
 static const uint16_t test_bitmap[8 * 8] =
@@ -57,12 +55,12 @@ static const uint16_t test_bitmap[8 * 8] =
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
-
 static void Demo_ColorBars(void);
 static void Demo_Shapes(void);
 static void Demo_Text(void);
 static void Demo_Joystick(void);
 static void Demo_Pet(void);
+static void Dead_Pet(void);
 
 /* Joystick (B1) bit flags returned by Joystick_Read() */
 #define JOY_LEFT_MASK   (1U << 0)
@@ -85,6 +83,7 @@ static uint8_t Joystick_Read(void)
   return state;
 }
 
+Pet myPet;
 /**
   * @brief  The application entry point.
   * @retval int
@@ -106,12 +105,12 @@ int main(void)
   //ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
   //ILI9341_DrawString(30, 40, "NUCLEO-L496ZG-P", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
   //HAL_Delay(2000);
-  Pet_Init();
+  Pet_Init(&myPet);
   Demo_Pet();
   /* Infinite loop: cycle through the demo pages */
   while (1)
   {
-    Pet_Update();
+    Pet_Update(&myPet);
     Demo_Pet();
     HAL_Delay(2000);
     /**Demo_ColorBars();
@@ -135,7 +134,8 @@ int main(void)
 
 static void Demo_Pet(void)
 {
-  int hunger = Pet_GetHunger();
+  int hunger = Pet_GetHunger(&myPet);
+  int happiness = Pet_GetHappiness(&myPet);
   uint16_t hunger_width = hunger * 2;
   ILI9341_FillScreen(ILI9341_COLOR_BLACK);
 
@@ -155,6 +155,15 @@ static void Demo_Pet(void)
 
   ILI9341_FillRect(20, 285, 200, 15, ILI9341_COLOR_WHITE);
   ILI9341_FillRect(20, 285, 170, 15, ILI9341_COLOR_GREEN);
+}
+
+static void Dead_Pet(void)
+{
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+  ILI9341_DrawString(20, 100, "YOUR PET DIED",
+                     ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 2);
+  ILI9341_DrawString(20, 130, "PRESS RESET TO RESTART",
+                     ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 2);
 }
 
 /**

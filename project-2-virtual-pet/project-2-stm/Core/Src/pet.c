@@ -3,27 +3,35 @@
 static int hunger = 100;
 static int happiness = 100;
 
-void Pet_Init(void)
+void Pet_Init(Pet *pet)
 {
-    hunger = 100;
-    happiness = 100;
+    pet->hunger = 75;
+    pet->happiness = 85;
+    pet->state = PET_IDLE;
 }
 
-void Pet_Feed(void)
+void Pet_Feed(Pet *pet)
 {
-    hunger += 10;
+    pet->hunger += 10;
 
-    if (hunger > 100)
-        hunger = 100;
+    if (pet->hunger > 100)
+        pet->hunger = 100;
+
+    pet->state = PET_FEEDING;
 }
 
-int Pet_GetHunger(void)
+int Pet_GetHunger(Pet *pet)
 {
-    return hunger;
+    return pet->hunger;
 }
 
-void Pet_Update(void)
+int Pet_GetHappiness(Pet *pet)
 {
-    if (hunger > 0)
-        hunger--;
+    return pet->happiness;
+}
+
+void Pet_Update(Pet *pet)
+{
+    if (pet->hunger > 0)
+        pet->hunger--;
 }
