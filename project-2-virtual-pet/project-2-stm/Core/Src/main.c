@@ -38,18 +38,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
-static const uint16_t test_bitmap[8 * 8] =
-{
-    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
-    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
-    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
-    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
-
-    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
-    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
-    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
-    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0
-};
 
 /* Test bitmap for graphics demo */
 static const uint16_t test_bitmap[8 * 8] =
@@ -69,14 +57,11 @@ static const uint16_t test_bitmap[8 * 8] =
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
-static void Demo_ColorBars(void);
-static void Demo_Shapes(void);
-static void Demo_Text(void);
 static void Demo_Joystick(void);
-static void Demo_Pet(void);
 static void Dead_Pet(void);
-
-static void Graphics_Test(void);
+static void Ranaway_Pet(void);
+static void PetScreen_Init(void);
+static void PetScreen_UpdateBars(void);
 
 /* Joystick (B1) bit flags returned by Joystick_Read() */
 #define JOY_LEFT_MASK   (1U << 0)
@@ -118,132 +103,141 @@ int main(void)
 
   /* Initialize the LCD and show a splash screen */
   ILI9341_Init(&hspi1);
-  //ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
-  //ILI9341_DrawString(30, 40, "NUCLEO-L496ZG-P", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
-  //HAL_Delay(2000);
   Pet_Init(&myPet);
-  Demo_Pet();
+  PetScreen_Init();
+  PetScreen_UpdateBars();
+  
+  uint32_t lastUpdate = HAL_GetTick();
 
-  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
 
-  ILI9341_DrawRGB565Bitmap( 100, 100, 8, 8, test_bitmap);
-
-  Graphics_Test();
-
-  ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawString(30, 40, "NUCLEO-L496ZG-P", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
-  HAL_Delay(2000);
-
-  /* Infinite loop: cycle through the demo pages */
   while (1)
   {
-    Pet_Update(&myPet);
-    Demo_Pet();
-    HAL_Delay(2000);
-    /**Demo_ColorBars();
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    HAL_Delay(1500);
+    uint32_t now = HAL_GetTick();
 
-    Demo_Shapes();
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    HAL_Delay(1500);
+    if ((now - lastUpdate) >= 2000U)
+    {
+        lastUpdate = now;
 
-    Demo_Text();
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    HAL_Delay(1500);
+        Pet_Update(&myPet);
 
-    Demo_Joystick();
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    **/
-
+        /* Choose display based on the current state. */
+        switch (Pet_GetState(&myPet))
+        {
+            case PET_IDLE:
+            case PET_FEEDING:
+                PetScreen_UpdateBars();
+                break;
+            case PET_DEAD:
+                Dead_Pet();
+                break;
+            case PET_RAN_AWAY:
+                Ranaway_Pet();
+                break;
+            default:
+                break;
+        }
+    }
+   //HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
   }
 }
 
-static void Demo_Pet(void)
+static void PetScreen_Init(void)
 {
-  int hunger = Pet_GetHunger(&myPet);
-  int happiness = Pet_GetHappiness(&myPet);
-  uint16_t hunger_width = hunger * 2;
-  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+    ILI9341_FillScreen(ILI9341_COLOR_BLACK);
 
-  /* Pet placeholder */
-  ILI9341_DrawRGB565Bitmap( 100, 100, 8, 8, test_bitmap);
+    /* Draw the pet placeholder once. */
+    ILI9341_DrawRGB565Bitmap(100, 100, 8, 8, test_bitmap);
 
-  /* Hunger */
-  ILI9341_DrawString(20, 218, "HUNGER",
-                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+    /* Hunger label and bar background. */
+    ILI9341_DrawString(20, 218, "HUNGER",
+                       ILI9341_COLOR_WHITE,
+                       ILI9341_COLOR_BLACK, 2);
 
-  ILI9341_FillRect(20, 235, 200, 15, ILI9341_COLOR_WHITE);
-  ILI9341_FillRect(20, 235, hunger_width, 15, ILI9341_COLOR_GREEN);
+    ILI9341_FillRect(20, 235, 200, 15,
+                     ILI9341_COLOR_WHITE);
 
-  /* Happiness */
-  ILI9341_DrawString(20, 268, "HAPPINESS",
-                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+    /* Happiness label and bar background. */
+    ILI9341_DrawString(20, 268, "HAPPINESS",
+                       ILI9341_COLOR_WHITE,
+                       ILI9341_COLOR_BLACK, 2);
 
-  ILI9341_FillRect(20, 285, 200, 15, ILI9341_COLOR_WHITE);
-  ILI9341_FillRect(20, 285, 170, 15, ILI9341_COLOR_GREEN);
+    ILI9341_FillRect(20, 285, 200, 15,
+                     ILI9341_COLOR_WHITE);
+}
+
+static void PetScreen_UpdateBars(void)
+{
+    static int previous_hunger_width = -1;
+    static int previous_happiness_width = -1;
+
+    int hunger_width = Pet_GetHunger(&myPet) * 2;
+    int happiness_width = Pet_GetHappiness(&myPet) * 2;
+
+    /* Update hunger bar only. */
+    if (hunger_width != previous_hunger_width)
+    {
+        if (previous_hunger_width < 0)
+        {
+            ILI9341_FillRect(20, 235, hunger_width, 15,
+                             ILI9341_COLOR_GREEN);
+        }
+        else if (hunger_width < previous_hunger_width)
+        {
+            ILI9341_FillRect(20 + hunger_width, 235,
+                             previous_hunger_width - hunger_width, 15,
+                             ILI9341_COLOR_WHITE);
+        }
+        else
+        {
+            ILI9341_FillRect(20 + previous_hunger_width, 235,
+                             hunger_width - previous_hunger_width, 15,
+                             ILI9341_COLOR_GREEN);
+        }
+
+        previous_hunger_width = hunger_width;
+    }
+
+    /* Update happiness bar only. */
+    if (happiness_width != previous_happiness_width)
+    {
+        if (previous_happiness_width < 0)
+        {
+            ILI9341_FillRect(20, 285, happiness_width, 15,
+                             ILI9341_COLOR_GREEN);
+        }
+        else if (happiness_width < previous_happiness_width)
+        {
+            ILI9341_FillRect(20 + happiness_width, 285,
+                             previous_happiness_width - happiness_width, 15,
+                             ILI9341_COLOR_WHITE);
+        }
+        else
+        {
+            ILI9341_FillRect(20 + previous_happiness_width, 285,
+                             happiness_width - previous_happiness_width, 15,
+                             ILI9341_COLOR_GREEN);
+        }
+
+        previous_happiness_width = happiness_width;
+    }
 }
 
 static void Dead_Pet(void)
 {
   ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-  ILI9341_DrawString(20, 100, "YOUR PET DIED",
+  ILI9341_DrawString(56, 100, "YOUR PET DIED",
                      ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawString(20, 130, "PRESS RESET TO RESTART",
+  ILI9341_DrawString(56, 130, "PRESS RESET",
                      ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 2);
 }
 
-/**
-  * @brief  Fills the screen with a set of vertical color bars.
-  */
-static void Demo_ColorBars(void)
-{
-  static const uint16_t colors[] =
-  {
-    ILI9341_COLOR_WHITE, ILI9341_COLOR_YELLOW, ILI9341_COLOR_CYAN, ILI9341_COLOR_GREEN,
-    ILI9341_COLOR_MAGENTA, ILI9341_COLOR_RED, ILI9341_COLOR_BLUE, ILI9341_COLOR_ORANGE
-  };
-  const uint16_t bar_count = sizeof(colors) / sizeof(colors[0]);
-  const uint16_t bar_width = ILI9341_WIDTH / bar_count;
-  uint16_t i;
-
-  for (i = 0; i < bar_count; i++)
-  {
-    ILI9341_FillRect((uint16_t)(i * bar_width), 0, bar_width, ILI9341_HEIGHT, colors[i]);
-  }
-}
-
-/**
-  * @brief  Draws a handful of filled and outlined shapes.
-  */
-static void Demo_Shapes(void)
+static void Ranaway_Pet(void)
 {
   ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-
-  ILI9341_FillRect(20, 20, 80, 60, ILI9341_COLOR_RED);
-  ILI9341_DrawRect(120, 20, 80, 60, ILI9341_COLOR_GREEN);
-
-  ILI9341_DrawLine(20, 110, 220, 110, ILI9341_COLOR_WHITE);
-  ILI9341_DrawLine(20, 110, 220, 260, ILI9341_COLOR_YELLOW);
-  ILI9341_DrawLine(220, 110, 20, 260, ILI9341_COLOR_CYAN);
-
-  ILI9341_FillRect(70, 220, 100, 40, ILI9341_COLOR_BLUE);
-  ILI9341_DrawRect(65, 215, 110, 50, ILI9341_COLOR_WHITE);
-}
-
-/**
-  * @brief  Demonstrates text rendering at a few different sizes.
-  */
-static void Demo_Text(void)
-{
-  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-
-  ILI9341_DrawString(10, 20, "HELLO CLASS!", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 3);
-  ILI9341_DrawString(10, 60, "ILI9341 QVGA TFT", ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawString(10, 90, "DRIVEN OVER SPI1", ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawString(10, 130, "TRY CHANGING THE", ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
-  ILI9341_DrawString(10, 145, "COLORS AND TEXT IN", ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
-  ILI9341_DrawString(10, 160, "DEMO TEXT() IN MAIN.C", ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+  ILI9341_DrawString(16, 100, "YOUR PET RAN AWAY",
+                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 2);
+  ILI9341_DrawString(56, 130, "PRESS RESET",
+                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 2);
 }
 
 /**
@@ -271,30 +265,6 @@ static void Demo_Joystick(void)
     ILI9341_DrawString(10, 70, line, ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 2);
     HAL_Delay(50);
   }
-}
-
-static void Graphics_Test(void)
-{
-    // Clear display
-    ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-
-    // Text with foreground/background colors
-    ILI9341_DrawString( 10, 10, "GRAPHICS TEST",ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK,2);
-
-    // Pixel
-    ILI9341_DrawPixel(20, 50, ILI9341_COLOR_RED);
-
-    // Line
-    ILI9341_DrawLine(20, 70,200, 70, ILI9341_COLOR_YELLOW);
-
-    // Rectangle
-    ILI9341_DrawRect(20, 90, 80, 50, ILI9341_COLOR_GREEN);
-
-    // Filled rectangle
-    ILI9341_FillRect(120, 90, 80, 50, ILI9341_COLOR_BLUE);
-
-    // More text
-    ILI9341_DrawString(20, 170, "PIXEL LINE RECT", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
 }
 
 /**
