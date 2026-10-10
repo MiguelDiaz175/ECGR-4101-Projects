@@ -2,7 +2,7 @@
 
 void Pet_Init(Pet *pet)
 {
-    pet->hunger = 2;
+    pet->hunger = 100;
     pet->happiness = 100;
     pet->state = PET_IDLE;
     pet->updates_since_happiness = 0;
