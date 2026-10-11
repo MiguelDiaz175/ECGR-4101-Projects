@@ -35,10 +35,10 @@
 #include "ili9341.h"
 #include "gfx01m2_conf.h"
 #include "pet.h"
+#include <stdio.h>
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
-
 
 /* Test bitmap for graphics demo */
 static const uint16_t test_bitmap[8 * 8] =
@@ -58,15 +58,14 @@ static const uint16_t test_bitmap[8 * 8] =
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
-static void Demo_ColorBars(void);
-static void Demo_Shapes(void);
-static void Demo_Text(void);
-static void Demo_Joystick(void);
-static void Demo_Pet(void);
-static void Dead_Pet(void);
-static void Update_Pet_Meters(void);
-
-static void Graphics_Test(void);
+static void Demo_Joystick(void) __attribute__((unused));
+static void MainMenu_Draw(void);
+static void Game_Start(void);
+static void GameOver_Draw(void);
+static void GameOver_DrawOptions(void);
+static void GameOver_Enter(void);
+static void PetScreen_Init(void);
+static void PetScreen_UpdateBars(void);
 
 /* Joystick (B1) bit flags returned by Joystick_Read() */
 #define JOY_LEFT_MASK   (1U << 0)
@@ -74,6 +73,28 @@ static void Graphics_Test(void);
 #define JOY_DOWN_MASK   (1U << 2)
 #define JOY_RIGHT_MASK  (1U << 3)
 #define JOY_UP_MASK     (1U << 4)
+
+typedef enum
+{
+  APP_MAIN_MENU,
+  APP_PLAYING,
+  APP_GAME_OVER
+} AppState;
+
+typedef enum
+{
+  GAME_OVER_RESTART,
+  GAME_OVER_MAIN_MENU
+} GameOverSelection;
+
+static AppState appState = APP_MAIN_MENU;
+static GameOverSelection gameOverSelection = GAME_OVER_RESTART;
+static uint32_t lastUpdate = 0U;
+static uint32_t hungerTotal = 0U;
+static uint32_t happinessTotal = 0U;
+static uint32_t statSampleCount = 0U;
+static uint8_t previousJoystickState = 0U;
+static uint32_t lastJoystickEvent = 0U;
 
 static uint8_t Joystick_Read(void)
 {
@@ -87,6 +108,23 @@ static uint8_t Joystick_Read(void)
   if (HAL_GPIO_ReadPin(JOY_UP_GPIO_Port, JOY_UP_Pin) == GPIO_PIN_RESET)         { state |= JOY_UP_MASK; }
 
   return state;
+}
+
+static uint8_t Joystick_GetPressed(uint32_t now)
+{
+  uint8_t current = Joystick_Read();
+  uint8_t pressed = current & (uint8_t)(~previousJoystickState);
+
+  previousJoystickState = current;
+
+  /* Ignore switch bounce without blocking the application loop. */
+  if ((pressed != 0U) && ((now - lastJoystickEvent) >= 150U))
+  {
+    lastJoystickEvent = now;
+    return pressed;
+  }
+
+  return 0U;
 }
 
 Pet myPet;
@@ -108,179 +146,252 @@ int main(void)
 
   /* Initialize the LCD and show a splash screen */
   ILI9341_Init(&hspi1);
-  //ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
-  //ILI9341_DrawString(30, 40, "NUCLEO-L496ZG-P", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
-  //HAL_Delay(2000);
+  MainMenu_Draw();
 
-  /* Initialize the virtual pet */
-  Pet_Init(&myPet);
-
-  /* Display the initial pet screen */
-  Demo_Pet();
-
-  /*ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-
-  ILI9341_DrawRGB565Bitmap( 100, 100, 8, 8, test_bitmap);*/
-
-  /* Graphics test - currently disabled  */
-  /*Graphics_Test(); */
-
-  /*ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawString(30, 40, "NUCLEO-L496ZG-P", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
-  HAL_Delay(2000);*/
-
-  /* Infinite loop: cycle through the demo pages */
   while (1)
   {
-    
-    HAL_Delay(2000);
+    uint32_t now = HAL_GetTick();
+    uint8_t pressed = Joystick_GetPressed(now);
 
-    
-    Pet_Update(&myPet);
+    switch (appState)
+    {
+      case APP_MAIN_MENU:
+        if ((pressed & JOY_CENTER_MASK) != 0U)
+        {
+          Game_Start();
+        }
+        break;
 
-    
-    Update_Pet_Meters();
-    /**Demo_ColorBars();
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    HAL_Delay(1500);
+      case APP_PLAYING:
+        if ((now - lastUpdate) >= 2000U)
+        {
+          lastUpdate = now;
+          Pet_Update(&myPet);
 
-    Demo_Shapes();
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    HAL_Delay(1500);
+          hungerTotal += (uint32_t)Pet_GetHunger(&myPet);
+          happinessTotal += (uint32_t)Pet_GetHappiness(&myPet);
+          statSampleCount++;
 
-    Demo_Text();
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    HAL_Delay(1500);
+          if ((Pet_GetState(&myPet) == PET_DEAD) ||
+              (Pet_GetState(&myPet) == PET_RAN_AWAY))
+          {
+            GameOver_Enter();
+          }
+          else
+          {
+            PetScreen_UpdateBars();
+          }
+        }
+        break;
 
-    Demo_Joystick();
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    **/
+      case APP_GAME_OVER:
+        if ((pressed & (JOY_UP_MASK | JOY_DOWN_MASK |
+                        JOY_LEFT_MASK | JOY_RIGHT_MASK)) != 0U)
+        {
+          gameOverSelection = (gameOverSelection == GAME_OVER_RESTART) ?
+                              GAME_OVER_MAIN_MENU : GAME_OVER_RESTART;
+          GameOver_DrawOptions();
+        }
 
+        if ((pressed & JOY_CENTER_MASK) != 0U)
+        {
+          if (gameOverSelection == GAME_OVER_RESTART)
+          {
+            Game_Start();
+          }
+          else
+          {
+            appState = APP_MAIN_MENU;
+            MainMenu_Draw();
+          }
+        }
+        break;
+
+      default:
+        appState = APP_MAIN_MENU;
+        MainMenu_Draw();
+        break;
+    }
   }
 }
 
-static void Demo_Pet(void)
+static void MainMenu_Draw(void)
 {
-   /* Get current pet values */
-    int hunger = Pet_GetHunger(&myPet);
-    int happiness = Pet_GetHappiness(&myPet);
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+  ILI9341_DrawString(20, 45, "VIRTUAL PET",
+                     ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 3);
+  ILI9341_DrawString(45, 105, "MAIN MENU",
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
 
-    /* Convert values from 0-100 to 0-200 pixels */
-    uint16_t hunger_width = hunger * 2;
-    uint16_t happiness_width = happiness * 2;
+  ILI9341_FillRect(20, 165, 200, 42, ILI9341_COLOR_BLUE);
+  ILI9341_DrawRect(20, 165, 200, 42, ILI9341_COLOR_WHITE);
+  ILI9341_DrawString(56, 178, "START GAME",
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLUE, 2);
 
-    /* Clear the LCD */
+  ILI9341_DrawString(12, 250, "PRESS CENTER TO START",
+                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+}
+
+static void Game_Start(void)
+{
+  Pet_Init(&myPet);
+
+  hungerTotal = (uint32_t)Pet_GetHunger(&myPet);
+  happinessTotal = (uint32_t)Pet_GetHappiness(&myPet);
+  statSampleCount = 1U;
+  lastUpdate = HAL_GetTick();
+  appState = APP_PLAYING;
+
+  PetScreen_Init();
+  PetScreen_UpdateBars();
+}
+
+static void PetScreen_Init(void)
+{
     ILI9341_FillScreen(ILI9341_COLOR_BLACK);
 
-    /* Pet placeholder */
+    /* Draw the pet placeholder once. */
     ILI9341_DrawRGB565Bitmap(100, 100, 8, 8, test_bitmap);
 
-    /* Hunger label */
-    ILI9341_DrawString( 20, 218, "HUNGER", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK,2 );
+    /* Hunger label and bar background. */
+    ILI9341_DrawString(20, 218, "HUNGER",
+                       ILI9341_COLOR_WHITE,
+                       ILI9341_COLOR_BLACK, 2);
 
-    /* Hunger bar background */
-    ILI9341_FillRect( 20, 235, 200, 15, ILI9341_COLOR_WHITE);
+    ILI9341_FillRect(20, 235, 200, 15,
+                     ILI9341_COLOR_WHITE);
 
-    /* Current hunger level */
-    ILI9341_FillRect( 20, 235, hunger_width, 15, ILI9341_COLOR_GREEN);
+    /* Happiness label and bar background. */
+    ILI9341_DrawString(20, 268, "HAPPINESS",
+                       ILI9341_COLOR_WHITE,
+                       ILI9341_COLOR_BLACK, 2);
 
-    /* Happiness label */
-    ILI9341_DrawString(20, 268, "HAPPINESS", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2 );
-
-    /* Happiness bar background */
-    ILI9341_FillRect( 20, 285, 200, 15, ILI9341_COLOR_WHITE );
-
-    /* Current happiness level */
-    ILI9341_FillRect( 20, 285, happiness_width, 15, ILI9341_COLOR_GREEN);
+    ILI9341_FillRect(20, 285, 200, 15,
+                     ILI9341_COLOR_WHITE);
 }
 
-static void Update_Pet_Meters(void)
+static void PetScreen_UpdateBars(void)
 {
-    int hunger = Pet_GetHunger(&myPet);
-    int happiness = Pet_GetHappiness(&myPet);
+    static int previous_hunger_width = -1;
+    static int previous_happiness_width = -1;
 
-    uint16_t hunger_width = hunger * 2;
-    uint16_t happiness_width = happiness * 2;
+    int hunger_width = Pet_GetHunger(&myPet) * 2;
+    int happiness_width = Pet_GetHappiness(&myPet) * 2;
 
-    /* Clear only the hunger bar area */
-    ILI9341_FillRect(20, 235, 200, 15,ILI9341_COLOR_WHITE);
-
-    /* Draw updated hunger level */
-    if (hunger_width > 0)
+    /* Update hunger bar only. */
+    if (hunger_width != previous_hunger_width)
     {
-        ILI9341_FillRect(20, 235, hunger_width, 15, ILI9341_COLOR_GREEN);
+        if (previous_hunger_width < 0)
+        {
+            ILI9341_FillRect(20, 235, hunger_width, 15,
+                             ILI9341_COLOR_GREEN);
+        }
+        else if (hunger_width < previous_hunger_width)
+        {
+            ILI9341_FillRect(20 + hunger_width, 235,
+                             previous_hunger_width - hunger_width, 15,
+                             ILI9341_COLOR_WHITE);
+        }
+        else
+        {
+            ILI9341_FillRect(20 + previous_hunger_width, 235,
+                             hunger_width - previous_hunger_width, 15,
+                             ILI9341_COLOR_GREEN);
+        }
+
+        previous_hunger_width = hunger_width;
     }
 
-    /* Clear only the happiness bar area */
-    ILI9341_FillRect(20, 285, 200, 15, ILI9341_COLOR_WHITE);
-
-    /* Draw updated happiness level */
-    if (happiness_width > 0)
+    /* Update happiness bar only. */
+    if (happiness_width != previous_happiness_width)
     {
-        ILI9341_FillRect(20, 285, happiness_width, 15, ILI9341_COLOR_GREEN);
+        if (previous_happiness_width < 0)
+        {
+            ILI9341_FillRect(20, 285, happiness_width, 15,
+                             ILI9341_COLOR_GREEN);
+        }
+        else if (happiness_width < previous_happiness_width)
+        {
+            ILI9341_FillRect(20 + happiness_width, 285,
+                             previous_happiness_width - happiness_width, 15,
+                             ILI9341_COLOR_WHITE);
+        }
+        else
+        {
+            ILI9341_FillRect(20 + previous_happiness_width, 285,
+                             happiness_width - previous_happiness_width, 15,
+                             ILI9341_COLOR_GREEN);
+        }
+
+        previous_happiness_width = happiness_width;
     }
 }
 
-static void Dead_Pet(void)
+static void GameOver_Enter(void)
 {
-  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-  ILI9341_DrawString(20, 100, "YOUR PET DIED",
-                     ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawString(20, 130, "PRESS RESET TO RESTART",
-                     ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 2);
+  gameOverSelection = GAME_OVER_RESTART;
+  appState = APP_GAME_OVER;
+  GameOver_Draw();
 }
 
-/**
-  * @brief  Fills the screen with a set of vertical color bars.
-  */
-static void Demo_ColorBars(void)
+static void GameOver_Draw(void)
 {
-  static const uint16_t colors[] =
-  {
-    ILI9341_COLOR_WHITE, ILI9341_COLOR_YELLOW, ILI9341_COLOR_CYAN, ILI9341_COLOR_GREEN,
-    ILI9341_COLOR_MAGENTA, ILI9341_COLOR_RED, ILI9341_COLOR_BLUE, ILI9341_COLOR_ORANGE
-  };
-  const uint16_t bar_count = sizeof(colors) / sizeof(colors[0]);
-  const uint16_t bar_width = ILI9341_WIDTH / bar_count;
-  uint16_t i;
+  char line[24];
+  uint32_t averageHunger = 0U;
+  uint32_t averageHappiness = 0U;
 
-  for (i = 0; i < bar_count; i++)
+  if (statSampleCount != 0U)
   {
-    ILI9341_FillRect((uint16_t)(i * bar_width), 0, bar_width, ILI9341_HEIGHT, colors[i]);
+    averageHunger = hungerTotal / statSampleCount;
+    averageHappiness = happinessTotal / statSampleCount;
   }
+
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+  ILI9341_DrawString(38, 25, "GAME OVER",
+                     ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 3);
+
+  if (Pet_GetState(&myPet) == PET_DEAD)
+  {
+    ILI9341_DrawString(38, 72, "YOUR PET DIED",
+                       ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 2);
+  }
+  else
+  {
+    ILI9341_DrawString(8, 72, "YOUR PET RAN AWAY",
+                       ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 2);
+  }
+
+  (void)snprintf(line, sizeof(line), "AVG HUNGER: %lu",
+                 (unsigned long)averageHunger);
+  ILI9341_DrawString(12, 115, line,
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+
+  (void)snprintf(line, sizeof(line), "AVG HAPPINESS: %lu",
+                 (unsigned long)averageHappiness);
+  ILI9341_DrawString(12, 145, line,
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+
+  GameOver_DrawOptions();
+  ILI9341_DrawString(20, 300, "MOVE + CENTER TO SELECT",
+                     ILI9341_COLOR_GRAY, ILI9341_COLOR_BLACK, 1);
 }
 
-/**
-  * @brief  Draws a handful of filled and outlined shapes.
-  */
-static void Demo_Shapes(void)
+static void GameOver_DrawOptions(void)
 {
-  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+  uint16_t restartBackground = (gameOverSelection == GAME_OVER_RESTART) ?
+                               ILI9341_COLOR_BLUE : ILI9341_COLOR_BLACK;
+  uint16_t menuBackground = (gameOverSelection == GAME_OVER_MAIN_MENU) ?
+                            ILI9341_COLOR_BLUE : ILI9341_COLOR_BLACK;
 
-  ILI9341_FillRect(20, 20, 80, 60, ILI9341_COLOR_RED);
-  ILI9341_DrawRect(120, 20, 80, 60, ILI9341_COLOR_GREEN);
+  ILI9341_FillRect(20, 205, 200, 35, restartBackground);
+  ILI9341_DrawRect(20, 205, 200, 35, ILI9341_COLOR_WHITE);
+  ILI9341_DrawString(56, 216, "PLAY AGAIN",
+                     ILI9341_COLOR_WHITE, restartBackground, 2);
 
-  ILI9341_DrawLine(20, 110, 220, 110, ILI9341_COLOR_WHITE);
-  ILI9341_DrawLine(20, 110, 220, 260, ILI9341_COLOR_YELLOW);
-  ILI9341_DrawLine(220, 110, 20, 260, ILI9341_COLOR_CYAN);
-
-  ILI9341_FillRect(70, 220, 100, 40, ILI9341_COLOR_BLUE);
-  ILI9341_DrawRect(65, 215, 110, 50, ILI9341_COLOR_WHITE);
-}
-
-/**
-  * @brief  Demonstrates text rendering at a few different sizes.
-  */
-static void Demo_Text(void)
-{
-  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-
-  ILI9341_DrawString(10, 20, "HELLO CLASS!", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 3);
-  ILI9341_DrawString(10, 60, "ILI9341 QVGA TFT", ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawString(10, 90, "DRIVEN OVER SPI1", ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawString(10, 130, "TRY CHANGING THE", ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
-  ILI9341_DrawString(10, 145, "COLORS AND TEXT IN", ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
-  ILI9341_DrawString(10, 160, "DEMO TEXT() IN MAIN.C", ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+  ILI9341_FillRect(20, 250, 200, 35, menuBackground);
+  ILI9341_DrawRect(20, 250, 200, 35, ILI9341_COLOR_WHITE);
+  ILI9341_DrawString(56, 261, "MAIN MENU",
+                     ILI9341_COLOR_WHITE, menuBackground, 2);
 }
 
 /**
@@ -308,30 +419,6 @@ static void Demo_Joystick(void)
     ILI9341_DrawString(10, 70, line, ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 2);
     HAL_Delay(50);
   }
-}
-
-static void Graphics_Test(void)
-{
-    // Clear display
-    ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-
-    // Text with foreground/background colors
-    ILI9341_DrawString( 10, 10, "GRAPHICS TEST",ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK,2);
-
-    // Pixel
-    ILI9341_DrawPixel(20, 50, ILI9341_COLOR_RED);
-
-    // Line
-    ILI9341_DrawLine(20, 70,200, 70, ILI9341_COLOR_YELLOW);
-
-    // Rectangle
-    ILI9341_DrawRect(20, 90, 80, 50, ILI9341_COLOR_GREEN);
-
-    // Filled rectangle
-    ILI9341_FillRect(120, 90, 80, 50, ILI9341_COLOR_BLUE);
-
-    // More text
-    ILI9341_DrawString(20, 170, "PIXEL LINE RECT", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
 }
 
 /**

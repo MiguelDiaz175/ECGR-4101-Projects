@@ -222,9 +222,6 @@ void ILI9341_FillScreen(uint16_t color)
     ILI9341_FillRect(0, 0, ILI9341_WIDTH, ILI9341_HEIGHT, color);
 }
 
-
-
-
 void ILI9341_DrawPixel(uint16_t x, uint16_t y, uint16_t color)
 {
     ILI9341_FillRect(x, y, 1, 1, color);
