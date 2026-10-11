@@ -38,18 +38,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
-static const uint16_t test_bitmap[8 * 8] =
-{
-    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
-    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
-    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
-    0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
 
-    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
-    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
-    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0,
-    0x07E0, 0x07E0, 0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xFFE0, 0xFFE0
-};
 
 /* Test bitmap for graphics demo */
 static const uint16_t test_bitmap[8 * 8] =
@@ -75,6 +64,7 @@ static void Demo_Text(void);
 static void Demo_Joystick(void);
 static void Demo_Pet(void);
 static void Dead_Pet(void);
+static void Update_Pet_Meters(void);
 
 static void Graphics_Test(void);
 
@@ -121,25 +111,35 @@ int main(void)
   //ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
   //ILI9341_DrawString(30, 40, "NUCLEO-L496ZG-P", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
   //HAL_Delay(2000);
+
+  /* Initialize the virtual pet */
   Pet_Init(&myPet);
+
+  /* Display the initial pet screen */
   Demo_Pet();
 
-  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+  /*ILI9341_FillScreen(ILI9341_COLOR_BLACK);
 
-  ILI9341_DrawRGB565Bitmap( 100, 100, 8, 8, test_bitmap);
+  ILI9341_DrawRGB565Bitmap( 100, 100, 8, 8, test_bitmap);*/
 
-  Graphics_Test();
+  /* Graphics test - currently disabled  */
+  /*Graphics_Test(); */
 
-  ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+  /*ILI9341_DrawString(18, 12, "GFX01M2 LCD DEMO", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
   ILI9341_DrawString(30, 40, "NUCLEO-L496ZG-P", ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 1);
-  HAL_Delay(2000);
+  HAL_Delay(2000);*/
 
   /* Infinite loop: cycle through the demo pages */
   while (1)
   {
-    Pet_Update(&myPet);
-    Demo_Pet();
+    
     HAL_Delay(2000);
+
+    
+    Pet_Update(&myPet);
+
+    
+    Update_Pet_Meters();
     /**Demo_ColorBars();
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
     HAL_Delay(1500);
@@ -161,27 +161,64 @@ int main(void)
 
 static void Demo_Pet(void)
 {
-  int hunger = Pet_GetHunger(&myPet);
-  int happiness = Pet_GetHappiness(&myPet);
-  uint16_t hunger_width = hunger * 2;
-  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+   /* Get current pet values */
+    int hunger = Pet_GetHunger(&myPet);
+    int happiness = Pet_GetHappiness(&myPet);
 
-  /* Pet placeholder */
-  ILI9341_DrawRGB565Bitmap( 100, 100, 8, 8, test_bitmap);
+    /* Convert values from 0-100 to 0-200 pixels */
+    uint16_t hunger_width = hunger * 2;
+    uint16_t happiness_width = happiness * 2;
 
-  /* Hunger */
-  ILI9341_DrawString(20, 218, "HUNGER",
-                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+    /* Clear the LCD */
+    ILI9341_FillScreen(ILI9341_COLOR_BLACK);
 
-  ILI9341_FillRect(20, 235, 200, 15, ILI9341_COLOR_WHITE);
-  ILI9341_FillRect(20, 235, hunger_width, 15, ILI9341_COLOR_GREEN);
+    /* Pet placeholder */
+    ILI9341_DrawRGB565Bitmap(100, 100, 8, 8, test_bitmap);
 
-  /* Happiness */
-  ILI9341_DrawString(20, 268, "HAPPINESS",
-                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+    /* Hunger label */
+    ILI9341_DrawString( 20, 218, "HUNGER", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK,2 );
 
-  ILI9341_FillRect(20, 285, 200, 15, ILI9341_COLOR_WHITE);
-  ILI9341_FillRect(20, 285, 170, 15, ILI9341_COLOR_GREEN);
+    /* Hunger bar background */
+    ILI9341_FillRect( 20, 235, 200, 15, ILI9341_COLOR_WHITE);
+
+    /* Current hunger level */
+    ILI9341_FillRect( 20, 235, hunger_width, 15, ILI9341_COLOR_GREEN);
+
+    /* Happiness label */
+    ILI9341_DrawString(20, 268, "HAPPINESS", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2 );
+
+    /* Happiness bar background */
+    ILI9341_FillRect( 20, 285, 200, 15, ILI9341_COLOR_WHITE );
+
+    /* Current happiness level */
+    ILI9341_FillRect( 20, 285, happiness_width, 15, ILI9341_COLOR_GREEN);
+}
+
+static void Update_Pet_Meters(void)
+{
+    int hunger = Pet_GetHunger(&myPet);
+    int happiness = Pet_GetHappiness(&myPet);
+
+    uint16_t hunger_width = hunger * 2;
+    uint16_t happiness_width = happiness * 2;
+
+    /* Clear only the hunger bar area */
+    ILI9341_FillRect(20, 235, 200, 15,ILI9341_COLOR_WHITE);
+
+    /* Draw updated hunger level */
+    if (hunger_width > 0)
+    {
+        ILI9341_FillRect(20, 235, hunger_width, 15, ILI9341_COLOR_GREEN);
+    }
+
+    /* Clear only the happiness bar area */
+    ILI9341_FillRect(20, 285, 200, 15, ILI9341_COLOR_WHITE);
+
+    /* Draw updated happiness level */
+    if (happiness_width > 0)
+    {
+        ILI9341_FillRect(20, 285, happiness_width, 15, ILI9341_COLOR_GREEN);
+    }
 }
 
 static void Dead_Pet(void)
