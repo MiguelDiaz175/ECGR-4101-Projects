@@ -34,6 +34,7 @@
 #include "main.h"
 #include "ili9341.h"
 #include "gfx01m2_conf.h"
+#include "debug_peripherals.h"
 #include "pet.h"
 #include <stdio.h>
 
@@ -60,12 +61,22 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void Demo_Joystick(void) __attribute__((unused));
 static void MainMenu_Draw(void);
+static void MainMenu_DrawItems(void);
+static void MainMenu_DrawItem(uint8_t index, uint16_t y,
+                              uint16_t textX, const char *label);
 static void Game_Start(void);
 static void GameOver_Draw(void);
 static void GameOver_DrawOptions(void);
 static void GameOver_Enter(void);
 static void PetScreen_Init(void);
 static void PetScreen_UpdateBars(void);
+static void DebugMPU_Enter(void);
+static void DebugMPU_Update(uint32_t now);
+static void DebugMicrophone_Enter(void);
+static void DebugMicrophone_Update(uint32_t now);
+static void DebugSpeaker_Enter(void);
+static void DebugSpeaker_Draw(void);
+static void Debug_ExitToMenu(void);
 
 /* Joystick (B1) bit flags returned by Joystick_Read() */
 #define JOY_LEFT_MASK   (1U << 0)
@@ -78,8 +89,20 @@ typedef enum
 {
   APP_MAIN_MENU,
   APP_PLAYING,
-  APP_GAME_OVER
+  APP_GAME_OVER,
+  APP_DEBUG_MPU,
+  APP_DEBUG_MICROPHONE,
+  APP_DEBUG_SPEAKER
 } AppState;
+
+typedef enum
+{
+  MENU_START_GAME,
+  MENU_MPU_TEST,
+  MENU_MICROPHONE_TEST,
+  MENU_SPEAKER_TEST,
+  MENU_ITEM_COUNT
+} MainMenuSelection;
 
 typedef enum
 {
@@ -88,6 +111,7 @@ typedef enum
 } GameOverSelection;
 
 static AppState appState = APP_MAIN_MENU;
+static MainMenuSelection mainMenuSelection = MENU_START_GAME;
 static GameOverSelection gameOverSelection = GAME_OVER_RESTART;
 static uint32_t lastUpdate = 0U;
 static uint32_t hungerTotal = 0U;
@@ -95,6 +119,13 @@ static uint32_t happinessTotal = 0U;
 static uint32_t statSampleCount = 0U;
 static uint8_t previousJoystickState = 0U;
 static uint32_t lastJoystickEvent = 0U;
+static uint32_t lastDebugUpdate = 0U;
+static uint32_t lastMpuTextUpdate = 0U;
+static bool mpuConnected = false;
+static int16_t previousMpuBlockX = -1;
+static int16_t previousMpuBlockY = -1;
+static uint8_t speakerVolume = 30U;
+static bool speakerToneEnabled = false;
 
 static uint8_t Joystick_Read(void)
 {
@@ -143,6 +174,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_SPI1_Init();
+  (void)DebugPeripherals_Init();
 
   /* Initialize the LCD and show a splash screen */
   ILI9341_Init(&hspi1);
@@ -156,9 +188,40 @@ int main(void)
     switch (appState)
     {
       case APP_MAIN_MENU:
+        if ((pressed & JOY_UP_MASK) != 0U)
+        {
+          mainMenuSelection = (mainMenuSelection == MENU_START_GAME) ?
+                              (MENU_ITEM_COUNT - 1) :
+                              (MainMenuSelection)(mainMenuSelection - 1);
+          MainMenu_DrawItems();
+        }
+
+        if ((pressed & JOY_DOWN_MASK) != 0U)
+        {
+          mainMenuSelection = (MainMenuSelection)
+                              ((mainMenuSelection + 1) % MENU_ITEM_COUNT);
+          MainMenu_DrawItems();
+        }
+
         if ((pressed & JOY_CENTER_MASK) != 0U)
         {
-          Game_Start();
+          switch (mainMenuSelection)
+          {
+            case MENU_START_GAME:
+              Game_Start();
+              break;
+            case MENU_MPU_TEST:
+              DebugMPU_Enter();
+              break;
+            case MENU_MICROPHONE_TEST:
+              DebugMicrophone_Enter();
+              break;
+            case MENU_SPEAKER_TEST:
+              DebugSpeaker_Enter();
+              break;
+            default:
+              break;
+          }
         }
         break;
 
@@ -207,6 +270,74 @@ int main(void)
         }
         break;
 
+      case APP_DEBUG_MPU:
+        if ((pressed & JOY_CENTER_MASK) != 0U)
+        {
+          Debug_ExitToMenu();
+        }
+        else
+        {
+          if (((pressed & JOY_UP_MASK) != 0U) && !mpuConnected)
+          {
+            DebugMPU_Enter();
+          }
+          DebugMPU_Update(now);
+        }
+        break;
+
+      case APP_DEBUG_MICROPHONE:
+        if ((pressed & JOY_CENTER_MASK) != 0U)
+        {
+          Debug_ExitToMenu();
+        }
+        else
+        {
+          DebugMicrophone_Update(now);
+        }
+        break;
+
+      case APP_DEBUG_SPEAKER:
+        if ((pressed & JOY_DOWN_MASK) != 0U)
+        {
+          Debug_ExitToMenu();
+          break;
+        }
+
+        if ((pressed & JOY_LEFT_MASK) != 0U)
+        {
+          speakerVolume = (speakerVolume >= 10U) ? speakerVolume - 10U : 0U;
+          if (speakerToneEnabled)
+          {
+            Speaker_SetVolume(speakerVolume);
+          }
+          DebugSpeaker_Draw();
+        }
+
+        if ((pressed & JOY_RIGHT_MASK) != 0U)
+        {
+          speakerVolume = (speakerVolume <= 90U) ? speakerVolume + 10U : 100U;
+          if (speakerToneEnabled)
+          {
+            Speaker_SetVolume(speakerVolume);
+          }
+          DebugSpeaker_Draw();
+        }
+
+        if ((pressed & JOY_CENTER_MASK) != 0U)
+        {
+          speakerToneEnabled = !speakerToneEnabled;
+          if (speakerToneEnabled)
+          {
+            Speaker_SetVolume(speakerVolume);
+          }
+          else
+          {
+            Speaker_Stop();
+          }
+          DebugSpeaker_Draw();
+        }
+        break;
+
       default:
         appState = APP_MAIN_MENU;
         MainMenu_Draw();
@@ -218,18 +349,35 @@ int main(void)
 static void MainMenu_Draw(void)
 {
   ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-  ILI9341_DrawString(20, 45, "VIRTUAL PET",
-                     ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 3);
-  ILI9341_DrawString(45, 105, "MAIN MENU",
+  ILI9341_DrawString(54, 12, "VIRTUAL PET",
+                     ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 2);
+  ILI9341_DrawString(72, 38, "MAIN MENU",
                      ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
 
-  ILI9341_FillRect(20, 165, 200, 42, ILI9341_COLOR_BLUE);
-  ILI9341_DrawRect(20, 165, 200, 42, ILI9341_COLOR_WHITE);
-  ILI9341_DrawString(56, 178, "START GAME",
-                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLUE, 2);
+  MainMenu_DrawItems();
 
-  ILI9341_DrawString(12, 250, "PRESS CENTER TO START",
+  ILI9341_DrawString(45, 282, "UP/DOWN + CENTER",
                      ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+}
+
+static void MainMenu_DrawItems(void)
+{
+  MainMenu_DrawItem(MENU_START_GAME, 70, 60, "START GAME");
+  MainMenu_DrawItem(MENU_MPU_TEST, 116, 42, "MPU-9250 TEST");
+  MainMenu_DrawItem(MENU_MICROPHONE_TEST, 162, 30, "MICROPHONE TEST");
+  MainMenu_DrawItem(MENU_SPEAKER_TEST, 208, 48, "SPEAKER TEST");
+}
+
+static void MainMenu_DrawItem(uint8_t index, uint16_t y,
+                              uint16_t textX, const char *label)
+{
+  uint16_t background = (mainMenuSelection == index) ?
+                        ILI9341_COLOR_BLUE : ILI9341_COLOR_BLACK;
+
+  ILI9341_FillRect(20, y, 200, 36, background);
+  ILI9341_DrawRect(20, y, 200, 36, ILI9341_COLOR_WHITE);
+  ILI9341_DrawString(textX, y + 11, label,
+                     ILI9341_COLOR_WHITE, background, 2);
 }
 
 static void Game_Start(void)
@@ -394,6 +542,230 @@ static void GameOver_DrawOptions(void)
                      ILI9341_COLOR_WHITE, menuBackground, 2);
 }
 
+static void DebugMPU_Enter(void)
+{
+  char identity[20];
+  const char *deviceName;
+
+  appState = APP_DEBUG_MPU;
+  previousMpuBlockX = -1;
+  previousMpuBlockY = -1;
+  lastDebugUpdate = 0U;
+  lastMpuTextUpdate = 0U;
+  mpuConnected = MPU9250_Init();
+
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+  ILI9341_DrawString(52, 10, "MOTION TEST",
+                     ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 2);
+
+  if (mpuConnected)
+  {
+    deviceName = (MPU9250_GetWhoAmI() == 0x70U) ?
+                 "MPU-6500 COMPATIBLE" : "MPU-9250 COMPATIBLE";
+    (void)snprintf(identity, sizeof(identity), "WHO_AM_I: 0x%02X",
+                   MPU9250_GetWhoAmI());
+    ILI9341_DrawString(20, 40, identity,
+                       ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 1);
+    ILI9341_DrawString(20, 55, deviceName,
+                       ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 1);
+    ILI9341_DrawRect(20, 100, 200, 150, ILI9341_COLOR_WHITE);
+  }
+  else
+  {
+    ILI9341_DrawString(20, 65, "MPU NOT DETECTED",
+                       ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 2);
+    (void)snprintf(identity, sizeof(identity), "WHO_AM_I: 0x%02X",
+                   MPU9250_GetWhoAmI());
+    ILI9341_DrawString(20, 92, identity,
+                       ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 1);
+    ILI9341_DrawString(20, 105, "CHECK 3V3, GND,",
+                       ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
+    ILI9341_DrawString(20, 120, "SDA, SCL, AD0, NCS",
+                       ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
+    ILI9341_DrawString(20, 155, "UP: RETRY",
+                       ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 2);
+  }
+
+  ILI9341_DrawString(55, 285, "CENTER: MAIN MENU",
+                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+}
+
+static void DebugMPU_Update(uint32_t now)
+{
+  int16_t x;
+  int16_t y;
+  int16_t z;
+  int32_t blockX;
+  int32_t blockY;
+  char values[34];
+
+  /* Refresh motion at up to 50 FPS. */
+  if (!mpuConnected || ((now - lastDebugUpdate) < 20U))
+  {
+    return;
+  }
+  lastDebugUpdate = now;
+
+  if (!MPU9250_ReadAcceleration(&x, &y, &z))
+  {
+    mpuConnected = false;
+    ILI9341_FillRect(20, 55, 200, 35, ILI9341_COLOR_BLACK);
+    ILI9341_DrawString(20, 65, "I2C READ FAILED",
+                       ILI9341_COLOR_RED, ILI9341_COLOR_BLACK, 2);
+    ILI9341_DrawString(20, 265, "UP: RETRY",
+                       ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+    return;
+  }
+
+  /* At +/-2 g, one g is approximately 16384 counts. Dividing by 256 maps
+   * normal board tilt to about +/-64 display pixels. The sensor is mounted
+   * 90 degrees relative to the LCD, so map -X to horizontal and Y to
+   * vertical motion. */
+  blockX = 112 - ((int32_t)x / 256);
+  blockY = 167 + ((int32_t)y / 256);
+
+  if (blockX < 22)  { blockX = 22; }
+  if (blockX > 202) { blockX = 202; }
+  if (blockY < 102) { blockY = 102; }
+  if (blockY > 232) { blockY = 232; }
+
+  if ((previousMpuBlockX >= 0) && (previousMpuBlockY >= 0))
+  {
+    ILI9341_FillRect((uint16_t)previousMpuBlockX,
+                     (uint16_t)previousMpuBlockY,
+                     16, 16, ILI9341_COLOR_BLACK);
+  }
+
+  ILI9341_FillRect((uint16_t)blockX, (uint16_t)blockY,
+                   16, 16, ILI9341_COLOR_GREEN);
+  previousMpuBlockX = (int16_t)blockX;
+  previousMpuBlockY = (int16_t)blockY;
+
+  /* Text is much more expensive to draw than the 16x16 block. Updating it
+   * at 10 Hz keeps the readings useful without slowing the animation. */
+  if ((now - lastMpuTextUpdate) >= 100U)
+  {
+    lastMpuTextUpdate = now;
+    ILI9341_FillRect(20, 55, 220, 35, ILI9341_COLOR_BLACK);
+    (void)snprintf(values, sizeof(values), "X:%6d Y:%6d", x, y);
+    ILI9341_DrawString(20, 58, values,
+                       ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
+    (void)snprintf(values, sizeof(values), "Z:%6d", z);
+    ILI9341_DrawString(20, 75, values,
+                       ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
+  }
+}
+
+static void DebugMicrophone_Enter(void)
+{
+  appState = APP_DEBUG_MICROPHONE;
+  lastDebugUpdate = 0U;
+
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+  ILI9341_DrawString(24, 12, "MICROPHONE TEST",
+                     ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 2);
+  ILI9341_DrawString(20, 52, "PA3 / ADC1 CHANNEL 8", 
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
+  ILI9341_DrawString(20, 112, "SOUND LEVEL",
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+  ILI9341_DrawRect(20, 142, 200, 28, ILI9341_COLOR_WHITE);
+  ILI9341_DrawString(20, 180, "QUIET",
+                     ILI9341_COLOR_GRAY, ILI9341_COLOR_BLACK, 1);
+  ILI9341_DrawString(190, 180, "LOUD",
+                     ILI9341_COLOR_GRAY, ILI9341_COLOR_BLACK, 1);
+  ILI9341_DrawString(55, 285, "CENTER: MAIN MENU",
+                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+}
+
+static void DebugMicrophone_Update(uint32_t now)
+{
+  uint16_t average;
+  uint16_t peakToPeak;
+  uint32_t width;
+  char line[24];
+
+  if ((now - lastDebugUpdate) < 50U)
+  {
+    return;
+  }
+  lastDebugUpdate = now;
+
+  peakToPeak = Microphone_ReadLevel(&average);
+  width = ((uint32_t)peakToPeak * 198U) / 1200U;
+  if (width > 198U)
+  {
+    width = 198U;
+  }
+
+  ILI9341_FillRect(21, 143, 198, 26, ILI9341_COLOR_BLACK);
+  if (width > 0U)
+  {
+    ILI9341_FillRect(21, 143, (uint16_t)width, 26,
+                     (width > 160U) ? ILI9341_COLOR_RED : ILI9341_COLOR_GREEN);
+  }
+
+  ILI9341_FillRect(20, 72, 210, 36, ILI9341_COLOR_BLACK);
+  (void)snprintf(line, sizeof(line), "ADC AVG: %4u", average);
+  ILI9341_DrawString(20, 75, line,
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
+  (void)snprintf(line, sizeof(line), "PEAK-PEAK: %4u", peakToPeak);
+  ILI9341_DrawString(20, 92, line,
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
+}
+
+static void DebugSpeaker_Enter(void)
+{
+  appState = APP_DEBUG_SPEAKER;
+  speakerVolume = 30U;
+  speakerToneEnabled = false;
+  Speaker_Stop();
+
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+  ILI9341_DrawString(42, 12, "SPEAKER TEST",
+                     ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 2);
+  ILI9341_DrawString(20, 50, "PE6 / TIM3 CH4 / 440 HZ",
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
+  ILI9341_DrawString(20, 108, "VOLUME",
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+  ILI9341_DrawRect(20, 138, 200, 28, ILI9341_COLOR_WHITE);
+  ILI9341_DrawString(20, 205, "LEFT/RIGHT: VOLUME",
+                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+  ILI9341_DrawString(20, 225, "CENTER: TONE ON/OFF",
+                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+  ILI9341_DrawString(20, 245, "DOWN: MAIN MENU",
+                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+  DebugSpeaker_Draw();
+}
+
+static void DebugSpeaker_Draw(void)
+{
+  char line[24];
+  uint16_t width = ((uint16_t)speakerVolume * 198U) / 100U;
+
+  ILI9341_FillRect(21, 139, 198, 26, ILI9341_COLOR_BLACK);
+  if (width > 0U)
+  {
+    ILI9341_FillRect(21, 139, width, 26, ILI9341_COLOR_GREEN);
+  }
+
+  ILI9341_FillRect(20, 75, 210, 25, ILI9341_COLOR_BLACK);
+  (void)snprintf(line, sizeof(line), "VOLUME: %3u%%", speakerVolume);
+  ILI9341_DrawString(20, 78, line,
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+  ILI9341_DrawString(75, 180,
+                     speakerToneEnabled ? "TONE: ON " : "TONE: OFF",
+                     speakerToneEnabled ? ILI9341_COLOR_GREEN : ILI9341_COLOR_RED,
+                     ILI9341_COLOR_BLACK, 1);
+}
+
+static void Debug_ExitToMenu(void)
+{
+  Speaker_Stop();
+  speakerToneEnabled = false;
+  appState = APP_MAIN_MENU;
+  MainMenu_Draw();
+}
+
 /**
   * @brief  Live joystick (B1) status readout for a few seconds.
   */
@@ -435,11 +807,10 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  /* PCLK2 is now ~56.8 MHz (HCLK was previously quartered by a stray AHB
-   * DIV4 - see SystemClock_Config). /32 keeps the same ~1.775 MHz target
-   * that gave comfortable margin over the ILI9341's 10 MHz write ceiling
-   * on this jumper-wired, unsupported-board setup. */
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  /* PCLK2 is ~56.8 MHz. /8 gives an SPI clock of ~7.1 MHz, remaining below
+   * the conservative 10 MHz write limit used for this shield while making
+   * screen updates four times faster than the previous /32 setting. */
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
