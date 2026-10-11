@@ -85,6 +85,16 @@ static void Debug_ExitToMenu(void);
 #define JOY_RIGHT_MASK  (1U << 3)
 #define JOY_UP_MASK     (1U << 4)
 
+/* Microphone scare configuration */
+#define MIC_SCARE_THRESHOLD 1000U
+#define MIC_SAMPLE_INTERVAL 50U
+#define MIC_SCARE_COOLDOWN 2000U
+#define ENABLE_MIC_SCARE 0
+
+static uint32_t lastMicSample = 0U;
+static uint32_t lastScareTime = 0U;
+static bool micScareReady = true;
+
 typedef enum
 {
   APP_MAIN_MENU,
@@ -121,6 +131,8 @@ static uint8_t previousJoystickState = 0U;
 static uint32_t lastJoystickEvent = 0U;
 static uint32_t lastDebugUpdate = 0U;
 static uint32_t lastMpuTextUpdate = 0U;
+static int previous_hunger_width = -1;
+static int previous_happiness_width = -1;
 static bool mpuConnected = false;
 static int16_t previousMpuBlockX = -1;
 static int16_t previousMpuBlockY = -1;
@@ -226,6 +238,54 @@ int main(void)
         break;
 
       case APP_PLAYING:
+        if ((pressed & JOY_RIGHT_MASK) != 0U)
+        {
+          Pet_Feed(&myPet);
+          if ((Pet_GetState(&myPet) == PET_DEAD) || (Pet_GetState(&myPet) == PET_RAN_AWAY))
+          {
+              GameOver_Enter();
+              break;
+          }
+
+          PetScreen_UpdateBars();
+        }
+        #if ENABLE_MIC_SCARE
+        if ((now - lastMicSample) >= MIC_SAMPLE_INTERVAL)
+        {
+            uint16_t soundLevel = Microphone_ReadLevel(NULL);
+
+            lastMicSample = now;
+
+            /* Reset trigger when sound falls below threshold. */
+            if (soundLevel < MIC_SCARE_THRESHOLD)
+            {
+                micScareReady = true;
+            }
+
+            /* Scare pet on a new loud sound, with a cooldown. */
+            if (micScareReady &&
+                soundLevel >= MIC_SCARE_THRESHOLD &&
+                (lastScareTime == 0U ||
+                (now - lastScareTime) >= MIC_SCARE_COOLDOWN))
+            {
+                Pet_Scare(&myPet);
+
+                lastScareTime = now;
+                micScareReady = false;
+
+                if (Pet_GetState(&myPet) == PET_RAN_AWAY)
+                {
+                    GameOver_Enter();
+                    break;
+                }
+
+                PetScreen_UpdateBars();
+            }
+        }
+        #endif
+
+
+
         if ((now - lastUpdate) >= 2000U)
         {
           lastUpdate = now;
@@ -382,16 +442,28 @@ static void MainMenu_DrawItem(uint8_t index, uint16_t y,
 
 static void Game_Start(void)
 {
-  Pet_Init(&myPet);
+  /* Reset the pet's stats and state. */
+    Pet_Init(&myPet);
 
-  hungerTotal = (uint32_t)Pet_GetHunger(&myPet);
-  happinessTotal = (uint32_t)Pet_GetHappiness(&myPet);
-  statSampleCount = 1U;
-  lastUpdate = HAL_GetTick();
-  appState = APP_PLAYING;
+    lastMicSample = HAL_GetTick();
+    lastScareTime = 0U;
+    micScareReady = true;
 
-  PetScreen_Init();
-  PetScreen_UpdateBars();
+    /* Reset the LCD bar tracking for the new game. */
+    previous_hunger_width = -1;
+    previous_happiness_width = -1;
+
+    /* Reset gameplay statistics. */
+    hungerTotal = (uint32_t)Pet_GetHunger(&myPet);
+    happinessTotal = (uint32_t)Pet_GetHappiness(&myPet);
+    statSampleCount = 1U;
+
+    lastUpdate = HAL_GetTick();
+    appState = APP_PLAYING;
+
+    /* Draw the new game screen and full stat bars. */
+    PetScreen_Init();
+    PetScreen_UpdateBars();
 }
 
 static void PetScreen_Init(void)
@@ -420,8 +492,7 @@ static void PetScreen_Init(void)
 
 static void PetScreen_UpdateBars(void)
 {
-    static int previous_hunger_width = -1;
-    static int previous_happiness_width = -1;
+    
 
     int hunger_width = Pet_GetHunger(&myPet) * 2;
     int happiness_width = Pet_GetHappiness(&myPet) * 2;

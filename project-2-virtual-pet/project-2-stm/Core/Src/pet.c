@@ -17,36 +17,76 @@ void Pet_Feed(Pet *pet)
         return;
     }
 
-    /* Increase hunger meter, capped at 100. */
-    pet->hunger += 10;
-
-    if (pet->hunger > 100)
+     /* Overfeeding penalty when hunger is already full. */
+    if (pet->hunger >= 100)
     {
-        pet->hunger = 100;
-    }
+        pet->happiness -= 10;
 
+        /* Happiness cannot fall below 0. */
+        if (pet->happiness < 0)
+        {
+            pet->happiness = 0;
+            pet->state = PET_RAN_AWAY;
+            return;
+        }
+    }
+    else
+    {
+        /* Normal feeding increases hunger by 10. */
+        pet->hunger += 10;
+
+        if (pet->hunger > 100)
+        {
+            pet->hunger = 100;
+        }
+        /* Increase happiness by 3, capped at 100. */
+        pet->happiness += 3;
+
+        if (pet->happiness > 100)
+        {
+            pet->happiness = 100;
+        }
+    }
     /* Feeding is a temporary state. */
     pet->state = PET_FEEDING;
 }
 
-
-void Pet_Update(Pet *pet)
+void Pet_Scare(Pet *pet)
 {
-    /* Terminal states do not change during normal gameplay. */
+    /* Dead or runaway pets cannot be scared. */
     if (pet->state == PET_DEAD ||
         pet->state == PET_RAN_AWAY)
     {
         return;
     }
 
-    /* Finish the feeding action and return to idle. */
-    if (pet->state == PET_FEEDING)
+    /* Loud noises decrease happiness by 10. */
+    pet->happiness -= 10;
+
+    if (pet->happiness <= 0)
     {
-        pet->state = PET_IDLE;
+        pet->happiness = 0;
+        pet->state = PET_RAN_AWAY;
+    }
+}
+
+
+void Pet_Update(Pet *pet)
+{
+      /* Terminal states do not change during normal gameplay. */
+    if (pet->state == PET_DEAD ||
+        pet->state == PET_RAN_AWAY)
+    {
         return;
     }
 
-    /* Normal idle gameplay: hunger decreases every update. */
+    /* Finish feeding without skipping normal stat decreases. */
+    if (pet->state == PET_FEEDING)
+    {
+        pet->state = PET_IDLE;
+    }
+
+    /* Normal gameplay: hunger decreases every update. */
     if (pet->hunger > 0)
     {
         pet->hunger--;
@@ -70,9 +110,8 @@ void Pet_Update(Pet *pet)
     {
         pet->state = PET_DEAD;
     }
-
-    /* Ranaway transition. */
-    if (pet->happiness == 0)
+    /* Runaway transition. */
+    else if (pet->happiness == 0)
     {
         pet->state = PET_RAN_AWAY;
     }

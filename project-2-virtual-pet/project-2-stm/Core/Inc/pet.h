@@ -18,6 +18,7 @@ typedef struct {
 void Pet_Init(Pet *pet);
 void Pet_Update(Pet *pet);
 void Pet_Feed(Pet *pet);
+void Pet_Scare(Pet *pet);
 
 int Pet_GetHunger(Pet *pet);
 int Pet_GetHappiness(Pet *pet);
