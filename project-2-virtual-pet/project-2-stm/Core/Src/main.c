@@ -64,6 +64,10 @@ static void MainMenu_Draw(void);
 static void MainMenu_DrawItems(void);
 static void MainMenu_DrawItem(uint8_t index, uint16_t y,
                               uint16_t textX, const char *label);
+static void DebugMenu_Draw(void);
+static void DebugMenu_DrawItems(void);
+static void DebugMenu_DrawItem(uint8_t index, uint16_t y,
+                               uint16_t textX, const char *label);
 static void Game_Start(void);
 static void GameOver_Draw(void);
 static void GameOver_DrawOptions(void);
@@ -76,6 +80,9 @@ static void DebugMicrophone_Enter(void);
 static void DebugMicrophone_Update(uint32_t now);
 static void DebugSpeaker_Enter(void);
 static void DebugSpeaker_Draw(void);
+static void DebugLight_Enter(void);
+static uint16_t DebugLight_MapBarWidth(uint16_t raw);
+static void DebugLight_Update(uint32_t now);
 static void Debug_ExitToMenu(void);
 
 /* Joystick (B1) bit flags returned by Joystick_Read() */
@@ -100,19 +107,29 @@ typedef enum
   APP_MAIN_MENU,
   APP_PLAYING,
   APP_GAME_OVER,
+  APP_DEBUG_MENU,
   APP_DEBUG_MPU,
   APP_DEBUG_MICROPHONE,
-  APP_DEBUG_SPEAKER
+  APP_DEBUG_SPEAKER,
+  APP_DEBUG_LIGHT
 } AppState;
 
 typedef enum
 {
   MENU_START_GAME,
-  MENU_MPU_TEST,
-  MENU_MICROPHONE_TEST,
-  MENU_SPEAKER_TEST,
+  MENU_DEBUG,
   MENU_ITEM_COUNT
 } MainMenuSelection;
+
+typedef enum
+{
+  DEBUG_MENU_MPU,
+  DEBUG_MENU_MICROPHONE,
+  DEBUG_MENU_SPEAKER,
+  DEBUG_MENU_LIGHT,
+  DEBUG_MENU_BACK,
+  DEBUG_MENU_ITEM_COUNT
+} DebugMenuSelection;
 
 typedef enum
 {
@@ -122,6 +139,7 @@ typedef enum
 
 static AppState appState = APP_MAIN_MENU;
 static MainMenuSelection mainMenuSelection = MENU_START_GAME;
+static DebugMenuSelection debugMenuSelection = DEBUG_MENU_MPU;
 static GameOverSelection gameOverSelection = GAME_OVER_RESTART;
 static uint32_t lastUpdate = 0U;
 static uint32_t hungerTotal = 0U;
@@ -222,14 +240,10 @@ int main(void)
             case MENU_START_GAME:
               Game_Start();
               break;
-            case MENU_MPU_TEST:
-              DebugMPU_Enter();
-              break;
-            case MENU_MICROPHONE_TEST:
-              DebugMicrophone_Enter();
-              break;
-            case MENU_SPEAKER_TEST:
-              DebugSpeaker_Enter();
+            case MENU_DEBUG:
+              debugMenuSelection = DEBUG_MENU_MPU;
+              appState = APP_DEBUG_MENU;
+              DebugMenu_Draw();
               break;
             default:
               break;
@@ -330,6 +344,48 @@ int main(void)
         }
         break;
 
+      case APP_DEBUG_MENU:
+        if ((pressed & JOY_UP_MASK) != 0U)
+        {
+          debugMenuSelection = (debugMenuSelection == DEBUG_MENU_MPU) ?
+                               (DEBUG_MENU_ITEM_COUNT - 1) :
+                               (DebugMenuSelection)(debugMenuSelection - 1);
+          DebugMenu_DrawItems();
+        }
+
+        if ((pressed & JOY_DOWN_MASK) != 0U)
+        {
+          debugMenuSelection = (DebugMenuSelection)
+                               ((debugMenuSelection + 1) % DEBUG_MENU_ITEM_COUNT);
+          DebugMenu_DrawItems();
+        }
+
+        if ((pressed & JOY_CENTER_MASK) != 0U)
+        {
+          switch (debugMenuSelection)
+          {
+            case DEBUG_MENU_MPU:
+              DebugMPU_Enter();
+              break;
+            case DEBUG_MENU_MICROPHONE:
+              DebugMicrophone_Enter();
+              break;
+            case DEBUG_MENU_SPEAKER:
+              DebugSpeaker_Enter();
+              break;
+            case DEBUG_MENU_LIGHT:
+              DebugLight_Enter();
+              break;
+            case DEBUG_MENU_BACK:
+              appState = APP_MAIN_MENU;
+              MainMenu_Draw();
+              break;
+            default:
+              break;
+          }
+        }
+        break;
+
       case APP_DEBUG_MPU:
         if ((pressed & JOY_CENTER_MASK) != 0U)
         {
@@ -342,6 +398,17 @@ int main(void)
             DebugMPU_Enter();
           }
           DebugMPU_Update(now);
+        }
+        break;
+
+      case APP_DEBUG_LIGHT:
+        if ((pressed & JOY_CENTER_MASK) != 0U)
+        {
+          Debug_ExitToMenu();
+        }
+        else
+        {
+          DebugLight_Update(now);
         }
         break;
 
@@ -422,16 +489,45 @@ static void MainMenu_Draw(void)
 
 static void MainMenu_DrawItems(void)
 {
-  MainMenu_DrawItem(MENU_START_GAME, 70, 60, "START GAME");
-  MainMenu_DrawItem(MENU_MPU_TEST, 116, 42, "MPU-9250 TEST");
-  MainMenu_DrawItem(MENU_MICROPHONE_TEST, 162, 30, "MICROPHONE TEST");
-  MainMenu_DrawItem(MENU_SPEAKER_TEST, 208, 48, "SPEAKER TEST");
+  MainMenu_DrawItem(MENU_START_GAME, 95, 60, "START GAME");
+  MainMenu_DrawItem(MENU_DEBUG, 155, 84, "DEBUG");
 }
 
 static void MainMenu_DrawItem(uint8_t index, uint16_t y,
                               uint16_t textX, const char *label)
 {
   uint16_t background = (mainMenuSelection == index) ?
+                        ILI9341_COLOR_BLUE : ILI9341_COLOR_BLACK;
+
+  ILI9341_FillRect(20, y, 200, 36, background);
+  ILI9341_DrawRect(20, y, 200, 36, ILI9341_COLOR_WHITE);
+  ILI9341_DrawString(textX, y + 11, label,
+                     ILI9341_COLOR_WHITE, background, 2);
+}
+
+static void DebugMenu_Draw(void)
+{
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+  ILI9341_DrawString(54, 12, "DEBUG MENU",
+                     ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 2);
+  DebugMenu_DrawItems();
+  ILI9341_DrawString(45, 292, "UP/DOWN + CENTER",
+                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+}
+
+static void DebugMenu_DrawItems(void)
+{
+  DebugMenu_DrawItem(DEBUG_MENU_MPU, 48, 42, "MPU-9250 TEST");
+  DebugMenu_DrawItem(DEBUG_MENU_MICROPHONE, 94, 30, "MICROPHONE TEST");
+  DebugMenu_DrawItem(DEBUG_MENU_SPEAKER, 140, 48, "SPEAKER TEST");
+  DebugMenu_DrawItem(DEBUG_MENU_LIGHT, 186, 36, "LIGHT SENSOR");
+  DebugMenu_DrawItem(DEBUG_MENU_BACK, 232, 90, "BACK");
+}
+
+static void DebugMenu_DrawItem(uint8_t index, uint16_t y,
+                               uint16_t textX, const char *label)
+{
+  uint16_t background = (debugMenuSelection == index) ?
                         ILI9341_COLOR_BLUE : ILI9341_COLOR_BLACK;
 
   ILI9341_FillRect(20, y, 200, 36, background);
@@ -657,7 +753,7 @@ static void DebugMPU_Enter(void)
                        ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 2);
   }
 
-  ILI9341_DrawString(55, 285, "CENTER: MAIN MENU",
+  ILI9341_DrawString(55, 285, "CENTER: DEBUG MENU",
                      ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
 }
 
@@ -744,7 +840,7 @@ static void DebugMicrophone_Enter(void)
                      ILI9341_COLOR_GRAY, ILI9341_COLOR_BLACK, 1);
   ILI9341_DrawString(190, 180, "LOUD",
                      ILI9341_COLOR_GRAY, ILI9341_COLOR_BLACK, 1);
-  ILI9341_DrawString(55, 285, "CENTER: MAIN MENU",
+  ILI9341_DrawString(55, 285, "CENTER: DEBUG MENU",
                      ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
 }
 
@@ -784,6 +880,90 @@ static void DebugMicrophone_Update(uint32_t now)
                      ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
 }
 
+static void DebugLight_Enter(void)
+{
+  appState = APP_DEBUG_LIGHT;
+  lastDebugUpdate = 0U;
+
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+  ILI9341_DrawString(30, 12, "LIGHT SENSOR TEST",
+                     ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 2);
+  ILI9341_DrawString(20, 52, "CN9 PIN 5 / A2 / PC3",
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
+  ILI9341_DrawString(20, 112, "LIGHT LEVEL",
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
+  ILI9341_DrawRect(20, 142, 200, 28, ILI9341_COLOR_WHITE);
+  ILI9341_DrawString(20, 180, "DARK",
+                     ILI9341_COLOR_GRAY, ILI9341_COLOR_BLACK, 1);
+  ILI9341_DrawString(185, 180, "BRIGHT",
+                     ILI9341_COLOR_GRAY, ILI9341_COLOR_BLACK, 1);
+  ILI9341_DrawString(55, 285, "CENTER: DEBUG MENU",
+                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+}
+
+static uint16_t DebugLight_MapBarWidth(uint16_t raw)
+{
+  uint32_t level;
+
+  /* Ignore a few counts of ADC/sensor noise, then use a compressed scale.
+   * Each progressively wider ADC range fills roughly one quarter of the bar:
+   *   0..64, 65..256, 257..1024, and 1025..4095.
+   * This makes room and dim light clearly visible without losing the ability
+   * to distinguish very bright light and direct sunlight. */
+  level = (raw > 8U) ? (uint32_t)raw - 8U : 0U;
+
+  if (level <= 64U)
+  {
+    return (uint16_t)((level * 50U) / 64U);
+  }
+  if (level <= 256U)
+  {
+    return (uint16_t)(50U + (((level - 64U) * 50U) / 192U));
+  }
+  if (level <= 1024U)
+  {
+    return (uint16_t)(100U + (((level - 256U) * 50U) / 768U));
+  }
+
+  return (uint16_t)(150U + (((level - 1024U) * 48U) / 3063U));
+}
+
+static void DebugLight_Update(uint32_t now)
+{
+  uint16_t raw;
+  uint32_t millivolts;
+  uint32_t percent;
+  uint32_t width;
+  char line[24];
+
+  if ((now - lastDebugUpdate) < 100U)
+  {
+    return;
+  }
+  lastDebugUpdate = now;
+
+  raw = LightSensor_ReadLevel();
+  millivolts = ((uint32_t)raw * 3300U) / 4095U;
+  width = DebugLight_MapBarWidth(raw);
+  percent = (width * 100U) / 198U;
+
+  ILI9341_FillRect(21, 143, 198, 26, ILI9341_COLOR_BLACK);
+  if (width > 0U)
+  {
+    ILI9341_FillRect(21, 143, (uint16_t)width, 26,
+                     ILI9341_COLOR_YELLOW);
+  }
+
+  ILI9341_FillRect(20, 72, 210, 36, ILI9341_COLOR_BLACK);
+  (void)snprintf(line, sizeof(line), "ADC RAW: %4u", raw);
+  ILI9341_DrawString(20, 75, line,
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
+  (void)snprintf(line, sizeof(line), "LEVEL:%3lu%% %4luMV",
+                 (unsigned long)percent, (unsigned long)millivolts);
+  ILI9341_DrawString(20, 92, line,
+                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
+}
+
 static void DebugSpeaker_Enter(void)
 {
   appState = APP_DEBUG_SPEAKER;
@@ -803,7 +983,7 @@ static void DebugSpeaker_Enter(void)
                      ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
   ILI9341_DrawString(20, 225, "CENTER: TONE ON/OFF",
                      ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
-  ILI9341_DrawString(20, 245, "DOWN: MAIN MENU",
+  ILI9341_DrawString(20, 245, "DOWN: DEBUG MENU",
                      ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
   DebugSpeaker_Draw();
 }
@@ -833,8 +1013,8 @@ static void Debug_ExitToMenu(void)
 {
   Speaker_Stop();
   speakerToneEnabled = false;
-  appState = APP_MAIN_MENU;
-  MainMenu_Draw();
+  appState = APP_DEBUG_MENU;
+  DebugMenu_Draw();
 }
 
 /**

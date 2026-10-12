@@ -12,6 +12,9 @@
 #define MPU9250_REG_WHO_AM_I     0x75U
 
 #define MICROPHONE_SAMPLE_COUNT  128U
+#define LIGHT_SAMPLE_COUNT       32U
+#define MICROPHONE_ADC_CHANNEL   8U
+#define LIGHT_ADC_CHANNEL        4U
 #define SPEAKER_TIMER_HZ         1000000U
 #define SPEAKER_TONE_HZ          440U
 
@@ -21,7 +24,7 @@ static uint8_t mpuWhoAmI = 0U;
 
 static bool I2C2_Init(void);
 static void ADC1_InitDirect(void);
-static uint16_t ADC1_ReadDirect(void);
+static uint16_t ADC1_ReadDirect(uint32_t channel);
 static void TIM3_PWM_InitDirect(void);
 static bool MPU9250_WriteRegister(uint8_t reg, uint8_t value);
 
@@ -80,6 +83,7 @@ static void ADC1_InitDirect(void)
   GPIO_InitTypeDef gpio = {0};
 
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_ADC_CLK_ENABLE();
 
   /* CN9 pin 1 = PA3 = ADC1 channel 8. */
@@ -87,6 +91,10 @@ static void ADC1_InitDirect(void)
   gpio.Mode = GPIO_MODE_ANALOG_ADC_CONTROL;
   gpio.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &gpio);
+
+  /* CN9 pin 5 = A2 = PC3 = ADC1 channel 4 (ALS-PT19 OUT). */
+  gpio.Pin = GPIO_PIN_3;
+  HAL_GPIO_Init(GPIOC, &gpio);
 
   /* Use the synchronous HCLK/4 ADC clock. */
   ADC123_COMMON->CCR &= ~ADC_CCR_CKMODE;
@@ -107,8 +115,9 @@ static void ADC1_InitDirect(void)
   }
 
   ADC1->CFGR = 0U;
-  ADC1->SQR1 = (8U << ADC_SQR1_SQ1_Pos);
-  ADC1->SMPR1 = (6U << ADC_SMPR1_SMP8_Pos);
+  ADC1->SQR1 = (MICROPHONE_ADC_CHANNEL << ADC_SQR1_SQ1_Pos);
+  ADC1->SMPR1 = (6U << ADC_SMPR1_SMP8_Pos) |
+                (6U << ADC_SMPR1_SMP4_Pos);
 
   ADC1->ISR = ADC_ISR_ADRDY;
   ADC1->CR |= ADC_CR_ADEN;
@@ -117,8 +126,9 @@ static void ADC1_InitDirect(void)
   }
 }
 
-static uint16_t ADC1_ReadDirect(void)
+static uint16_t ADC1_ReadDirect(uint32_t channel)
 {
+  ADC1->SQR1 = (channel << ADC_SQR1_SQ1_Pos);
   ADC1->CR |= ADC_CR_ADSTART;
   while ((ADC1->ISR & ADC_ISR_EOC) == 0U)
   {
@@ -236,7 +246,7 @@ uint16_t Microphone_ReadLevel(uint16_t *average)
 
   for (uint32_t sample = 0U; sample < MICROPHONE_SAMPLE_COUNT; sample++)
   {
-    uint16_t value = ADC1_ReadDirect();
+    uint16_t value = ADC1_ReadDirect(MICROPHONE_ADC_CHANNEL);
     if (value < minimum)
     {
       minimum = value;
@@ -254,6 +264,18 @@ uint16_t Microphone_ReadLevel(uint16_t *average)
   }
 
   return maximum - minimum;
+}
+
+uint16_t LightSensor_ReadLevel(void)
+{
+  uint32_t total = 0U;
+
+  for (uint32_t sample = 0U; sample < LIGHT_SAMPLE_COUNT; sample++)
+  {
+    total += ADC1_ReadDirect(LIGHT_ADC_CHANNEL);
+  }
+
+  return (uint16_t)(total / LIGHT_SAMPLE_COUNT);
 }
 
 void Speaker_SetVolume(uint8_t volume)
