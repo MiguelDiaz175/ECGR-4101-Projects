@@ -46,6 +46,8 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/debug_peripherals.c
     Core/Src/pet.c
+    Core/Src/pet_graphics.c
+    Core/Src/pet_sprites.c
     Core/Src/main.c
 )
 

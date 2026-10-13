@@ -36,13 +36,14 @@
 #include "gfx01m2_conf.h"
 #include "debug_peripherals.h"
 #include "pet.h"
+#include "pet_graphics.h"
 #include <stdio.h>
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
 
-/* Test bitmap for graphics demo */
-static const uint16_t test_bitmap[8 * 8] =
+/* Test bitmap for graphics demo (kept for the graphics test screen) */
+static const uint16_t test_bitmap[8 * 8] __attribute__((unused)) =
 {
     0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
     0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
@@ -252,9 +253,14 @@ int main(void)
         break;
 
       case APP_PLAYING:
+        /* Advance the pet animation first so a game-over screen drawn
+         * later in this pass is never painted over. */
+        PetGfx_Update(&myPet, now);
+
         if ((pressed & JOY_RIGHT_MASK) != 0U)
         {
           Pet_Feed(&myPet);
+          PetGfx_PlayReaction(PETGFX_ANIM_EATING, now, 800U);
           if ((Pet_GetState(&myPet) == PET_DEAD) || (Pet_GetState(&myPet) == PET_RAN_AWAY))
           {
               GameOver_Enter();
@@ -283,6 +289,7 @@ int main(void)
                 (now - lastScareTime) >= MIC_SCARE_COOLDOWN))
             {
                 Pet_Scare(&myPet);
+                PetGfx_PlayReaction(PETGFX_ANIM_SCARED, now, 1000U);
 
                 lastScareTime = now;
                 micScareReady = false;
@@ -566,8 +573,8 @@ static void PetScreen_Init(void)
 {
     ILI9341_FillScreen(ILI9341_COLOR_BLACK);
 
-    /* Draw the pet placeholder once. */
-    ILI9341_DrawRGB565Bitmap(100, 100, 8, 8, test_bitmap);
+    /* Draw the pet; PetGfx_Update animates it while playing. */
+    PetGfx_Init(HAL_GetTick());
 
     /* Hunger label and bar background. */
     ILI9341_DrawString(20, 218, "HUNGER",
