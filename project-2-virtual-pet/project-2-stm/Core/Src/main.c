@@ -122,7 +122,7 @@ static uint32_t lastShakeTime = 0U;
 #define DARK_EXIT_ADC               250U
 #define DARK_CONFIRM_MS            1500U
 #define DARK_HAPPINESS_INTERVAL    5000U
-#define DARK_SCARE_HAPPINESS_LOSS     3
+#define DARK_SCARE_HAPPINESS_LOSS     9U
 
 static uint32_t lastLightSample = 0U;
 static uint32_t darknessCandidateTime = 0U;
