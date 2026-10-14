@@ -36,13 +36,14 @@
 #include "gfx01m2_conf.h"
 #include "debug_peripherals.h"
 #include "pet.h"
+#include "pet_graphics.h"
 #include <stdio.h>
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
 
-/* Test bitmap for graphics demo */
-static const uint16_t test_bitmap[8 * 8] =
+/* Test bitmap for graphics demo (kept for the graphics test screen) */
+static const uint16_t test_bitmap[8 * 8] __attribute__((unused)) =
 {
     0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
     0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0x001F, 0x001F, 0x001F,
@@ -74,6 +75,7 @@ static void GameOver_DrawOptions(void);
 static void GameOver_Enter(void);
 static void PetScreen_Init(void);
 static void PetScreen_UpdateBars(void);
+static bool PetMotion_Update(uint32_t now);
 static void DebugMPU_Enter(void);
 static void DebugMPU_Update(uint32_t now);
 static void DebugMicrophone_Enter(void);
@@ -101,6 +103,25 @@ static void Debug_ExitToMenu(void);
 static uint32_t lastMicSample = 0U;
 static uint32_t lastScareTime = 0U;
 static bool micScareReady = true;
+
+/* Accelerometer (MPU-9250, I2C): tilt slides the pet, a hard shake scares it.
+ * Readings are +/-2 g full scale, so 16384 counts = 1 g. */
+#define MPU_SAMPLE_INTERVAL 50U      /* ms between I2C reads */
+#define MPU_COUNTS_PER_G    16384
+#define TILT_MAX_X          48       /* pixels the pet can slide left/right */
+#define TILT_MAX_Y          20       /* pixels the pet can slide up/down */
+#define TILT_STEP           4        /* move in 4 px steps to limit redraws */
+#define SHAKE_THRESHOLD     29491U   /* 1.8 g: well above gravity's 1 g */
+#define SHAKE_COOLDOWN      1500U    /* ms before another shake can count */
+
+static uint32_t lastMpuSample = 0U;
+static uint32_t lastShakeTime = 0U;
+
+/* After the pet dies or runs away, show its ending animation this long
+ * before GAME OVER. */
+#define ENDING_SCREEN_MS    3000U
+static uint32_t endingTime = 0U;
+static bool endingStarted = false;
 
 typedef enum
 {
@@ -252,13 +273,42 @@ int main(void)
         break;
 
       case APP_PLAYING:
+        /* Advance the pet animation first so a game-over screen drawn
+         * later in this pass is never painted over. */
+        PetGfx_Update(&myPet, now);
+
+        /* The pet died or ran away: show its ending animation for a few
+         * seconds, then GAME OVER. Input is ignored meanwhile. Every path
+         * below that kills the pet or makes it run away just breaks out,
+         * and this block takes over on the next pass. */
+        if ((Pet_GetState(&myPet) == PET_DEAD) ||
+            (Pet_GetState(&myPet) == PET_RAN_AWAY))
+        {
+          if (!endingStarted)
+          {
+            endingStarted = true;
+            endingTime = now;
+            PetScreen_UpdateBars();   /* show the empty bar that caused it */
+          }
+          else if ((now - endingTime) >= ENDING_SCREEN_MS)
+          {
+            GameOver_Enter();
+          }
+          break;
+        }
+
+        if (PetMotion_Update(now))
+        {
+          break;   /* shaken until it ran away */
+        }
+
         if ((pressed & JOY_RIGHT_MASK) != 0U)
         {
           Pet_Feed(&myPet);
+          PetGfx_PlayReaction(PETGFX_ANIM_EATING, now, 800U);
           if ((Pet_GetState(&myPet) == PET_DEAD) || (Pet_GetState(&myPet) == PET_RAN_AWAY))
           {
-              GameOver_Enter();
-              break;
+              break;   /* overfed until it ran away */
           }
 
           PetScreen_UpdateBars();
@@ -283,14 +333,14 @@ int main(void)
                 (now - lastScareTime) >= MIC_SCARE_COOLDOWN))
             {
                 Pet_Scare(&myPet);
+                PetGfx_PlayReaction(PETGFX_ANIM_SCARED, now, 1000U);
 
                 lastScareTime = now;
                 micScareReady = false;
 
                 if (Pet_GetState(&myPet) == PET_RAN_AWAY)
                 {
-                    GameOver_Enter();
-                    break;
+                    break;   /* scared until it ran away */
                 }
 
                 PetScreen_UpdateBars();
@@ -309,15 +359,9 @@ int main(void)
           happinessTotal += (uint32_t)Pet_GetHappiness(&myPet);
           statSampleCount++;
 
-          if ((Pet_GetState(&myPet) == PET_DEAD) ||
-              (Pet_GetState(&myPet) == PET_RAN_AWAY))
-          {
-            GameOver_Enter();
-          }
-          else
-          {
-            PetScreen_UpdateBars();
-          }
+          /* If this update killed the pet or made it run away, the block
+           * at the top of this case starts the ending on the next pass. */
+          PetScreen_UpdateBars();
         }
         break;
 
@@ -545,6 +589,14 @@ static void Game_Start(void)
     lastScareTime = 0U;
     micScareReady = true;
 
+    /* Start the accelerometer. If it isn't wired up, the game still runs;
+     * the pet just doesn't react to tilt or shaking. */
+    mpuConnected = MPU9250_Init();
+    lastMpuSample = HAL_GetTick();
+    lastShakeTime = HAL_GetTick();
+
+    endingStarted = false;
+
     /* Reset the LCD bar tracking for the new game. */
     previous_hunger_width = -1;
     previous_happiness_width = -1;
@@ -566,8 +618,8 @@ static void PetScreen_Init(void)
 {
     ILI9341_FillScreen(ILI9341_COLOR_BLACK);
 
-    /* Draw the pet placeholder once. */
-    ILI9341_DrawRGB565Bitmap(100, 100, 8, 8, test_bitmap);
+    /* Draw the pet; PetGfx_Update animates it while playing. */
+    PetGfx_Init(HAL_GetTick());
 
     /* Hunger label and bar background. */
     ILI9341_DrawString(20, 218, "HUNGER",
@@ -640,6 +692,67 @@ static void PetScreen_UpdateBars(void)
 
         previous_happiness_width = happiness_width;
     }
+}
+
+/* Convert an accelerometer reading to a pixel offset: 1 g = limit pixels,
+ * clamped to +/-limit and rounded to a multiple of TILT_STEP. */
+static int16_t Tilt_ToPixels(int16_t counts, int32_t limit)
+{
+  int32_t pixels = ((int32_t)counts * limit) / MPU_COUNTS_PER_G;
+
+  if (pixels > limit)  { pixels = limit; }
+  if (pixels < -limit) { pixels = -limit; }
+  return (int16_t)((pixels / TILT_STEP) * TILT_STEP);
+}
+
+/* Read the accelerometer: tilt slides the pet, a hard shake scares it
+ * (-10 happiness via Pet_Scare). Returns true if the pet ran away. */
+static bool PetMotion_Update(uint32_t now)
+{
+  int16_t x;
+  int16_t y;
+  int16_t z;
+  uint32_t magnitudeSq;
+
+  if (!mpuConnected || ((now - lastMpuSample) < MPU_SAMPLE_INTERVAL))
+  {
+    return false;
+  }
+  lastMpuSample = now;
+
+  if (!MPU9250_ReadAcceleration(&x, &y, &z))
+  {
+    /* Sensor unplugged mid-game: stop using it and recenter the pet. */
+    mpuConnected = false;
+    PetGfx_SetTilt(0, 0);
+    return false;
+  }
+
+  /* Tilt the board -> gravity shows up on X/Y -> slide the pet that way.
+   * If the pet moves the wrong way for how the sensor is mounted, swap
+   * x and y here or put a minus sign in front of one. */
+  PetGfx_SetTilt(Tilt_ToPixels(x, TILT_MAX_X), Tilt_ToPixels(y, TILT_MAX_Y));
+
+  /* Shake: total acceleration (squared, to avoid a square root) is far
+   * above the 1 g a board at rest feels from gravity. */
+  magnitudeSq = (uint32_t)((int32_t)x * x) + (uint32_t)((int32_t)y * y) +
+                (uint32_t)((int32_t)z * z);
+
+  if ((magnitudeSq > (SHAKE_THRESHOLD * SHAKE_THRESHOLD)) &&
+      ((now - lastShakeTime) >= SHAKE_COOLDOWN))
+  {
+    lastShakeTime = now;
+    Pet_Scare(&myPet);
+    PetGfx_PlayReaction(PETGFX_ANIM_SCARED, now, 1000U);
+
+    if (Pet_GetState(&myPet) == PET_RAN_AWAY)
+    {
+      return true;
+    }
+    PetScreen_UpdateBars();
+  }
+
+  return false;
 }
 
 static void GameOver_Enter(void)
