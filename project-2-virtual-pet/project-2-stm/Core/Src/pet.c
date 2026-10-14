@@ -70,7 +70,21 @@ void Pet_Scare(Pet *pet)
     }
 }
 
-void Pet_DarknessTick(Pet *pet)
+void Pet_Comfort(Pet *pet)
+{
+    if (pet->state == PET_DEAD ||
+        pet->state == PET_RAN_AWAY)
+    {
+        return;
+    }
+
+    if (pet->happiness < 100)
+    {
+        pet->happiness++;
+    }
+}
+
+void Pet_DarknessTick(Pet *pet, int happinessLoss)
 {
     /* Darkness drains happiness gradually instead of applying the larger
      * one-time penalty used for a shake or loud-noise scare. */
@@ -79,9 +93,16 @@ void Pet_DarknessTick(Pet *pet)
         return;
     }
 
-    if (pet->happiness > 0)
+    if (happinessLoss < 0)
     {
-        pet->happiness--;
+        return;
+    }
+
+    pet->happiness -= happinessLoss;
+
+    if (pet->happiness < 0)
+    {
+        pet->happiness = 0;
     }
 
     if (pet->happiness == 0)
@@ -112,10 +133,10 @@ void Pet_Update(Pet *pet)
         pet->hunger--;
     }
 
-    /* Happiness decreases every second update. */
+    /* Happiness decreases every fourth update (half the previous rate). */
     pet->updates_since_happiness++;
 
-    if (pet->updates_since_happiness >= 2)
+    if (pet->updates_since_happiness >= 4)
     {
         if (pet->happiness > 0)
         {

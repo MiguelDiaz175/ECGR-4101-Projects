@@ -35,6 +35,10 @@
 #include "ili9341.h"
 #include "gfx01m2_conf.h"
 #include "debug_peripherals.h"
+#define ENABLE_MICROPHONE_BEHAVIOR 0
+#if ENABLE_MICROPHONE_BEHAVIOR
+#include "microphone_behavior.h"
+#endif
 #include "pet.h"
 #include "pet_graphics.h"
 #include <stdio.h>
@@ -93,15 +97,10 @@ static void Debug_ExitToMenu(void);
 #define JOY_RIGHT_MASK  (1U << 3)
 #define JOY_UP_MASK     (1U << 4)
 
-/* Microphone scare configuration */
-#define MIC_SCARE_THRESHOLD 1000U
+#if ENABLE_MICROPHONE_BEHAVIOR
 #define MIC_SAMPLE_INTERVAL 50U
-#define MIC_SCARE_COOLDOWN 2000U
-#define ENABLE_MIC_SCARE 0
-
 static uint32_t lastMicSample = 0U;
-static uint32_t lastScareTime = 0U;
-static bool micScareReady = true;
+#endif
 
 /* Accelerometer (MPU-9250, I2C): tilt slides the pet, a hard shake scares it.
  * Readings are +/-2 g full scale, so 16384 counts = 1 g. */
@@ -119,10 +118,11 @@ static uint32_t lastShakeTime = 0U;
 /* ALS-PT19 gameplay behavior. Raw ADC values rise as the room gets brighter.
  * Separate enter/exit thresholds prevent rapid mood changes near the limit. */
 #define LIGHT_SAMPLE_INTERVAL       200U
-#define DARK_ENTER_ADC              100U
-#define DARK_EXIT_ADC               160U
+#define DARK_ENTER_ADC              200U
+#define DARK_EXIT_ADC               250U
 #define DARK_CONFIRM_MS            1500U
 #define DARK_HAPPINESS_INTERVAL    5000U
+#define DARK_SCARE_HAPPINESS_LOSS     3
 
 static uint32_t lastLightSample = 0U;
 static uint32_t darknessCandidateTime = 0U;
@@ -328,41 +328,31 @@ int main(void)
 
           PetScreen_UpdateBars();
         }
-        #if ENABLE_MIC_SCARE
+#if ENABLE_MICROPHONE_BEHAVIOR
         if ((now - lastMicSample) >= MIC_SAMPLE_INTERVAL)
         {
             uint16_t soundLevel = Microphone_ReadLevel(NULL);
+            MicrophoneBehaviorResult micResult;
 
             lastMicSample = now;
+            micResult = MicrophoneBehavior_Update(&myPet, soundLevel, now);
 
-            /* Reset trigger when sound falls below threshold. */
-            if (soundLevel < MIC_SCARE_THRESHOLD)
+            if (micResult == MIC_BEHAVIOR_SCARED)
             {
-                micScareReady = true;
-            }
-
-            /* Scare pet on a new loud sound, with a cooldown. */
-            if (micScareReady &&
-                soundLevel >= MIC_SCARE_THRESHOLD &&
-                (lastScareTime == 0U ||
-                (now - lastScareTime) >= MIC_SCARE_COOLDOWN))
-            {
-                Pet_Scare(&myPet);
                 PetGfx_PlayReaction(PETGFX_ANIM_SCARED, now, 1000U);
-
-                lastScareTime = now;
-                micScareReady = false;
 
                 if (Pet_GetState(&myPet) == PET_RAN_AWAY)
                 {
                     break;   /* scared until it ran away */
                 }
+            }
 
+            if (micResult != MIC_BEHAVIOR_NO_CHANGE)
+            {
                 PetScreen_UpdateBars();
             }
         }
-        #endif
-
+#endif
 
 
         if ((now - lastUpdate) >= 2000U)
@@ -561,11 +551,12 @@ static void Game_Start(void)
   uint32_t now = HAL_GetTick();
 
   /* Reset the pet's stats and state. */
-    Pet_Init(&myPet);
+  Pet_Init(&myPet);
 
-    lastMicSample = now;
-    lastScareTime = 0U;
-    micScareReady = true;
+#if ENABLE_MICROPHONE_BEHAVIOR
+  lastMicSample = now;
+  MicrophoneBehavior_Init(now);
+#endif
 
     /* Start the accelerometer. If it isn't wired up, the game still runs;
      * the pet just doesn't react to tilt or shaking. */
@@ -762,6 +753,9 @@ static bool PetLight_Update(uint32_t now)
         petInDarkness = true;
         lastDarknessPenalty = now;
         PetGfx_SetScared(true);
+        Pet_DarknessTick(&myPet, DARK_SCARE_HAPPINESS_LOSS);
+        PetScreen_UpdateBars();
+        return Pet_GetState(&myPet) == PET_RAN_AWAY;
       }
     }
     else
@@ -783,7 +777,7 @@ static bool PetLight_Update(uint32_t now)
   if ((now - lastDarknessPenalty) >= DARK_HAPPINESS_INTERVAL)
   {
     lastDarknessPenalty = now;
-    Pet_DarknessTick(&myPet);
+    Pet_DarknessTick(&myPet, 1);
     PetScreen_UpdateBars();
 
     return Pet_GetState(&myPet) == PET_RAN_AWAY;
