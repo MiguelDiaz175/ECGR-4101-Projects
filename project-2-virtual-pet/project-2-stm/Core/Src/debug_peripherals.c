@@ -15,9 +15,6 @@
 #define LIGHT_SAMPLE_COUNT       32U
 #define MICROPHONE_ADC_CHANNEL   8U
 #define LIGHT_ADC_CHANNEL        4U
-#define SPEAKER_TIMER_HZ         1000000U
-#define SPEAKER_TONE_HZ          440U
-
 static I2C_HandleTypeDef hi2c2;
 static bool i2cReady = false;
 static uint8_t mpuWhoAmI = 0U;
@@ -25,13 +22,11 @@ static uint8_t mpuWhoAmI = 0U;
 static bool I2C2_Init(void);
 static void ADC1_InitDirect(void);
 static uint16_t ADC1_ReadDirect(uint32_t channel);
-static void TIM3_PWM_InitDirect(void);
 static bool MPU9250_WriteRegister(uint8_t reg, uint8_t value);
 
 bool DebugPeripherals_Init(void)
 {
   ADC1_InitDirect();
-  TIM3_PWM_InitDirect();
   i2cReady = I2C2_Init();
   return i2cReady;
 }
@@ -134,38 +129,6 @@ static uint16_t ADC1_ReadDirect(uint32_t channel)
   {
   }
   return (uint16_t)ADC1->DR;
-}
-
-static void TIM3_PWM_InitDirect(void)
-{
-  GPIO_InitTypeDef gpio = {0};
-  uint32_t timerClock;
-
-  __HAL_RCC_GPIOE_CLK_ENABLE();
-  __HAL_RCC_TIM3_CLK_ENABLE();
-
-  /* CN11 pin 62 (also CN9 pin 20) = PE6 = TIM3 channel 4. */
-  gpio.Pin = GPIO_PIN_6;
-  gpio.Mode = GPIO_MODE_AF_PP;
-  gpio.Pull = GPIO_NOPULL;
-  gpio.Speed = GPIO_SPEED_FREQ_HIGH;
-  gpio.Alternate = GPIO_AF2_TIM3;
-  HAL_GPIO_Init(GPIOE, &gpio);
-
-  timerClock = HAL_RCC_GetPCLK1Freq();
-  if ((RCC->CFGR & RCC_CFGR_PPRE1) != RCC_CFGR_PPRE1_DIV1)
-  {
-    timerClock *= 2U;
-  }
-
-  TIM3->CR1 = 0U;
-  TIM3->PSC = (timerClock / SPEAKER_TIMER_HZ) - 1U;
-  TIM3->ARR = (SPEAKER_TIMER_HZ / SPEAKER_TONE_HZ) - 1U;
-  TIM3->CCR4 = 0U;
-  TIM3->CCMR2 = TIM_CCMR2_OC4PE | TIM_CCMR2_OC4M_1 | TIM_CCMR2_OC4M_2;
-  TIM3->CCER = TIM_CCER_CC4E;
-  TIM3->EGR = TIM_EGR_UG;
-  TIM3->CR1 = TIM_CR1_ARPE | TIM_CR1_CEN;
 }
 
 static bool MPU9250_WriteRegister(uint8_t reg, uint8_t value)
@@ -276,22 +239,4 @@ uint16_t LightSensor_ReadLevel(void)
   }
 
   return (uint16_t)(total / LIGHT_SAMPLE_COUNT);
-}
-
-void Speaker_SetVolume(uint8_t volume)
-{
-  uint32_t period = TIM3->ARR + 1U;
-
-  if (volume > 100U)
-  {
-    volume = 100U;
-  }
-
-  /* At 100%, produce a 50% duty-cycle square wave. */
-  TIM3->CCR4 = (period * volume) / 200U;
-}
-
-void Speaker_Stop(void)
-{
-  TIM3->CCR4 = 0U;
 }

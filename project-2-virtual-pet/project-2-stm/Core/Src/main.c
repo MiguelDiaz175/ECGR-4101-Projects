@@ -76,12 +76,11 @@ static void GameOver_Enter(void);
 static void PetScreen_Init(void);
 static void PetScreen_UpdateBars(void);
 static bool PetMotion_Update(uint32_t now);
+static bool PetLight_Update(uint32_t now);
 static void DebugMPU_Enter(void);
 static void DebugMPU_Update(uint32_t now);
 static void DebugMicrophone_Enter(void);
 static void DebugMicrophone_Update(uint32_t now);
-static void DebugSpeaker_Enter(void);
-static void DebugSpeaker_Draw(void);
 static void DebugLight_Enter(void);
 static uint16_t DebugLight_MapBarWidth(uint16_t raw);
 static void DebugLight_Update(uint32_t now);
@@ -109,13 +108,26 @@ static bool micScareReady = true;
 #define MPU_SAMPLE_INTERVAL 50U      /* ms between I2C reads */
 #define MPU_COUNTS_PER_G    16384
 #define TILT_MAX_X          48       /* pixels the pet can slide left/right */
-#define TILT_MAX_Y          20       /* pixels the pet can slide up/down */
+#define TILT_MAX_Y          48       /* increased vertical travel/sensitivity */
 #define TILT_STEP           4        /* move in 4 px steps to limit redraws */
 #define SHAKE_THRESHOLD     29491U   /* 1.8 g: well above gravity's 1 g */
 #define SHAKE_COOLDOWN      1500U    /* ms before another shake can count */
 
 static uint32_t lastMpuSample = 0U;
 static uint32_t lastShakeTime = 0U;
+
+/* ALS-PT19 gameplay behavior. Raw ADC values rise as the room gets brighter.
+ * Separate enter/exit thresholds prevent rapid mood changes near the limit. */
+#define LIGHT_SAMPLE_INTERVAL       200U
+#define DARK_ENTER_ADC              100U
+#define DARK_EXIT_ADC               160U
+#define DARK_CONFIRM_MS            1500U
+#define DARK_HAPPINESS_INTERVAL    5000U
+
+static uint32_t lastLightSample = 0U;
+static uint32_t darknessCandidateTime = 0U;
+static uint32_t lastDarknessPenalty = 0U;
+static bool petInDarkness = false;
 
 /* After the pet dies or runs away, show its ending animation this long
  * before GAME OVER. */
@@ -131,7 +143,6 @@ typedef enum
   APP_DEBUG_MENU,
   APP_DEBUG_MPU,
   APP_DEBUG_MICROPHONE,
-  APP_DEBUG_SPEAKER,
   APP_DEBUG_LIGHT
 } AppState;
 
@@ -146,7 +157,6 @@ typedef enum
 {
   DEBUG_MENU_MPU,
   DEBUG_MENU_MICROPHONE,
-  DEBUG_MENU_SPEAKER,
   DEBUG_MENU_LIGHT,
   DEBUG_MENU_BACK,
   DEBUG_MENU_ITEM_COUNT
@@ -173,11 +183,11 @@ static uint32_t lastMpuTextUpdate = 0U;
 static int previous_hunger_width = -1;
 static int previous_happiness_width = -1;
 static bool mpuConnected = false;
+static bool mpuCalibrated = false;
+static int16_t mpuCenterX = 0;
+static int16_t mpuCenterY = 0;
 static int16_t previousMpuBlockX = -1;
 static int16_t previousMpuBlockY = -1;
-static uint8_t speakerVolume = 30U;
-static bool speakerToneEnabled = false;
-
 static uint8_t Joystick_Read(void)
 {
   uint8_t state = 0;
@@ -302,6 +312,11 @@ int main(void)
           break;   /* shaken until it ran away */
         }
 
+        if (PetLight_Update(now))
+        {
+          break;   /* happiness reached zero while the room was dark */
+        }
+
         if ((pressed & JOY_RIGHT_MASK) != 0U)
         {
           Pet_Feed(&myPet);
@@ -414,9 +429,6 @@ int main(void)
             case DEBUG_MENU_MICROPHONE:
               DebugMicrophone_Enter();
               break;
-            case DEBUG_MENU_SPEAKER:
-              DebugSpeaker_Enter();
-              break;
             case DEBUG_MENU_LIGHT:
               DebugLight_Enter();
               break;
@@ -437,9 +449,16 @@ int main(void)
         }
         else
         {
-          if (((pressed & JOY_UP_MASK) != 0U) && !mpuConnected)
+          if ((pressed & JOY_UP_MASK) != 0U)
           {
-            DebugMPU_Enter();
+            if (mpuConnected)
+            {
+              mpuCalibrated = false;
+            }
+            else
+            {
+              DebugMPU_Enter();
+            }
           }
           DebugMPU_Update(now);
         }
@@ -464,48 +483,6 @@ int main(void)
         else
         {
           DebugMicrophone_Update(now);
-        }
-        break;
-
-      case APP_DEBUG_SPEAKER:
-        if ((pressed & JOY_DOWN_MASK) != 0U)
-        {
-          Debug_ExitToMenu();
-          break;
-        }
-
-        if ((pressed & JOY_LEFT_MASK) != 0U)
-        {
-          speakerVolume = (speakerVolume >= 10U) ? speakerVolume - 10U : 0U;
-          if (speakerToneEnabled)
-          {
-            Speaker_SetVolume(speakerVolume);
-          }
-          DebugSpeaker_Draw();
-        }
-
-        if ((pressed & JOY_RIGHT_MASK) != 0U)
-        {
-          speakerVolume = (speakerVolume <= 90U) ? speakerVolume + 10U : 100U;
-          if (speakerToneEnabled)
-          {
-            Speaker_SetVolume(speakerVolume);
-          }
-          DebugSpeaker_Draw();
-        }
-
-        if ((pressed & JOY_CENTER_MASK) != 0U)
-        {
-          speakerToneEnabled = !speakerToneEnabled;
-          if (speakerToneEnabled)
-          {
-            Speaker_SetVolume(speakerVolume);
-          }
-          else
-          {
-            Speaker_Stop();
-          }
-          DebugSpeaker_Draw();
         }
         break;
 
@@ -563,9 +540,8 @@ static void DebugMenu_DrawItems(void)
 {
   DebugMenu_DrawItem(DEBUG_MENU_MPU, 48, 42, "MPU-9250 TEST");
   DebugMenu_DrawItem(DEBUG_MENU_MICROPHONE, 94, 30, "MICROPHONE TEST");
-  DebugMenu_DrawItem(DEBUG_MENU_SPEAKER, 140, 48, "SPEAKER TEST");
-  DebugMenu_DrawItem(DEBUG_MENU_LIGHT, 186, 36, "LIGHT SENSOR");
-  DebugMenu_DrawItem(DEBUG_MENU_BACK, 232, 90, "BACK");
+  DebugMenu_DrawItem(DEBUG_MENU_LIGHT, 140, 36, "LIGHT SENSOR");
+  DebugMenu_DrawItem(DEBUG_MENU_BACK, 186, 90, "BACK");
 }
 
 static void DebugMenu_DrawItem(uint8_t index, uint16_t y,
@@ -582,18 +558,25 @@ static void DebugMenu_DrawItem(uint8_t index, uint16_t y,
 
 static void Game_Start(void)
 {
+  uint32_t now = HAL_GetTick();
+
   /* Reset the pet's stats and state. */
     Pet_Init(&myPet);
 
-    lastMicSample = HAL_GetTick();
+    lastMicSample = now;
     lastScareTime = 0U;
     micScareReady = true;
 
     /* Start the accelerometer. If it isn't wired up, the game still runs;
      * the pet just doesn't react to tilt or shaking. */
     mpuConnected = MPU9250_Init();
-    lastMpuSample = HAL_GetTick();
-    lastShakeTime = HAL_GetTick();
+    lastMpuSample = now;
+    lastShakeTime = now;
+
+    lastLightSample = 0U;
+    darknessCandidateTime = 0U;
+    lastDarknessPenalty = now;
+    petInDarkness = false;
 
     endingStarted = false;
 
@@ -606,7 +589,7 @@ static void Game_Start(void)
     happinessTotal = (uint32_t)Pet_GetHappiness(&myPet);
     statSampleCount = 1U;
 
-    lastUpdate = HAL_GetTick();
+    lastUpdate = now;
     appState = APP_PLAYING;
 
     /* Draw the new game screen and full stat bars. */
@@ -696,9 +679,9 @@ static void PetScreen_UpdateBars(void)
 
 /* Convert an accelerometer reading to a pixel offset: 1 g = limit pixels,
  * clamped to +/-limit and rounded to a multiple of TILT_STEP. */
-static int16_t Tilt_ToPixels(int16_t counts, int32_t limit)
+static int16_t Tilt_ToPixels(int32_t counts, int32_t limit)
 {
-  int32_t pixels = ((int32_t)counts * limit) / MPU_COUNTS_PER_G;
+  int32_t pixels = (counts * limit) / MPU_COUNTS_PER_G;
 
   if (pixels > limit)  { pixels = limit; }
   if (pixels < -limit) { pixels = -limit; }
@@ -728,10 +711,10 @@ static bool PetMotion_Update(uint32_t now)
     return false;
   }
 
-  /* Tilt the board -> gravity shows up on X/Y -> slide the pet that way.
-   * If the pet moves the wrong way for how the sensor is mounted, swap
-   * x and y here or put a minus sign in front of one. */
-  PetGfx_SetTilt(Tilt_ToPixels(x, TILT_MAX_X), Tilt_ToPixels(y, TILT_MAX_Y));
+  /* The sensor's X direction is opposite the LCD's horizontal direction on
+   * this assembly, so negate X. Y uses a larger range for better response. */
+  PetGfx_SetTilt(Tilt_ToPixels(-(int32_t)x, TILT_MAX_X),
+                 Tilt_ToPixels((int32_t)y, TILT_MAX_Y));
 
   /* Shake: total acceleration (squared, to avoid a square root) is far
    * above the 1 g a board at rest feels from gravity. */
@@ -750,6 +733,60 @@ static bool PetMotion_Update(uint32_t now)
       return true;
     }
     PetScreen_UpdateBars();
+  }
+
+  return false;
+}
+
+static bool PetLight_Update(uint32_t now)
+{
+  uint16_t lightLevel;
+
+  if ((now - lastLightSample) < LIGHT_SAMPLE_INTERVAL)
+  {
+    return false;
+  }
+  lastLightSample = now;
+  lightLevel = LightSensor_ReadLevel();
+
+  if (!petInDarkness)
+  {
+    if (lightLevel <= DARK_ENTER_ADC)
+    {
+      if (darknessCandidateTime == 0U)
+      {
+        darknessCandidateTime = now;
+      }
+      else if ((now - darknessCandidateTime) >= DARK_CONFIRM_MS)
+      {
+        petInDarkness = true;
+        lastDarknessPenalty = now;
+        PetGfx_SetScared(true);
+      }
+    }
+    else
+    {
+      darknessCandidateTime = 0U;
+    }
+
+    return false;
+  }
+
+  if (lightLevel >= DARK_EXIT_ADC)
+  {
+    petInDarkness = false;
+    darknessCandidateTime = 0U;
+    PetGfx_SetScared(false);
+    return false;
+  }
+
+  if ((now - lastDarknessPenalty) >= DARK_HAPPINESS_INTERVAL)
+  {
+    lastDarknessPenalty = now;
+    Pet_DarknessTick(&myPet);
+    PetScreen_UpdateBars();
+
+    return Pet_GetState(&myPet) == PET_RAN_AWAY;
   }
 
   return false;
@@ -830,12 +867,13 @@ static void DebugMPU_Enter(void)
   appState = APP_DEBUG_MPU;
   previousMpuBlockX = -1;
   previousMpuBlockY = -1;
+  mpuCalibrated = false;
   lastDebugUpdate = 0U;
   lastMpuTextUpdate = 0U;
   mpuConnected = MPU9250_Init();
 
   ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-  ILI9341_DrawString(52, 10, "MOTION TEST",
+  ILI9341_DrawString(40, 10, "MOTION TEST V2",
                      ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 2);
 
   if (mpuConnected)
@@ -849,6 +887,8 @@ static void DebugMPU_Enter(void)
     ILI9341_DrawString(20, 55, deviceName,
                        ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 1);
     ILI9341_DrawRect(20, 100, 200, 150, ILI9341_COLOR_WHITE);
+    ILI9341_DrawString(20, 265, "UP: RECENTER",
+                       ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
   }
   else
   {
@@ -875,6 +915,8 @@ static void DebugMPU_Update(uint32_t now)
   int16_t x;
   int16_t y;
   int16_t z;
+  int32_t relativeX;
+  int32_t relativeY;
   int32_t blockX;
   int32_t blockY;
   char values[34];
@@ -897,12 +939,18 @@ static void DebugMPU_Update(uint32_t now)
     return;
   }
 
-  /* At +/-2 g, one g is approximately 16384 counts. Dividing by 256 maps
-   * normal board tilt to about +/-64 display pixels. The sensor is mounted
-   * 90 degrees relative to the LCD, so map -X to horizontal and Y to
-   * vertical motion. */
-  blockX = 112 - ((int32_t)x / 256);
-  blockY = 167 + ((int32_t)y / 256);
+  if (!mpuCalibrated)
+  {
+    mpuCenterX = x;
+    mpuCenterY = y;
+    mpuCalibrated = true;
+  }
+
+  relativeX = (int32_t)x - (int32_t)mpuCenterX;
+  relativeY = (int32_t)y - (int32_t)mpuCenterY;
+
+  blockX = 112 + (relativeX / 256);
+  blockY = 167 + (relativeY / 64);
 
   if (blockX < 22)  { blockX = 22; }
   if (blockX > 202) { blockX = 202; }
@@ -1077,55 +1125,8 @@ static void DebugLight_Update(uint32_t now)
                      ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
 }
 
-static void DebugSpeaker_Enter(void)
-{
-  appState = APP_DEBUG_SPEAKER;
-  speakerVolume = 30U;
-  speakerToneEnabled = false;
-  Speaker_Stop();
-
-  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-  ILI9341_DrawString(42, 12, "SPEAKER TEST",
-                     ILI9341_COLOR_CYAN, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawString(20, 50, "PE6 / TIM3 CH4 / 440 HZ",
-                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 1);
-  ILI9341_DrawString(20, 108, "VOLUME",
-                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawRect(20, 138, 200, 28, ILI9341_COLOR_WHITE);
-  ILI9341_DrawString(20, 205, "LEFT/RIGHT: VOLUME",
-                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
-  ILI9341_DrawString(20, 225, "CENTER: TONE ON/OFF",
-                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
-  ILI9341_DrawString(20, 245, "DOWN: DEBUG MENU",
-                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
-  DebugSpeaker_Draw();
-}
-
-static void DebugSpeaker_Draw(void)
-{
-  char line[24];
-  uint16_t width = ((uint16_t)speakerVolume * 198U) / 100U;
-
-  ILI9341_FillRect(21, 139, 198, 26, ILI9341_COLOR_BLACK);
-  if (width > 0U)
-  {
-    ILI9341_FillRect(21, 139, width, 26, ILI9341_COLOR_GREEN);
-  }
-
-  ILI9341_FillRect(20, 75, 210, 25, ILI9341_COLOR_BLACK);
-  (void)snprintf(line, sizeof(line), "VOLUME: %3u%%", speakerVolume);
-  ILI9341_DrawString(20, 78, line,
-                     ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 2);
-  ILI9341_DrawString(75, 180,
-                     speakerToneEnabled ? "TONE: ON " : "TONE: OFF",
-                     speakerToneEnabled ? ILI9341_COLOR_GREEN : ILI9341_COLOR_RED,
-                     ILI9341_COLOR_BLACK, 1);
-}
-
 static void Debug_ExitToMenu(void)
 {
-  Speaker_Stop();
-  speakerToneEnabled = false;
   appState = APP_DEBUG_MENU;
   DebugMenu_Draw();
 }

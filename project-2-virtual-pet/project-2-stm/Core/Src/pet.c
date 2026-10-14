@@ -70,6 +70,26 @@ void Pet_Scare(Pet *pet)
     }
 }
 
+void Pet_DarknessTick(Pet *pet)
+{
+    /* Darkness drains happiness gradually instead of applying the larger
+     * one-time penalty used for a shake or loud-noise scare. */
+    if (pet->state == PET_DEAD || pet->state == PET_RAN_AWAY)
+    {
+        return;
+    }
+
+    if (pet->happiness > 0)
+    {
+        pet->happiness--;
+    }
+
+    if (pet->happiness == 0)
+    {
+        pet->state = PET_RAN_AWAY;
+    }
+}
+
 
 void Pet_Update(Pet *pet)
 {

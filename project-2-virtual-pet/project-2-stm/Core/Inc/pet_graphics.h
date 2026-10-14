@@ -9,9 +9,9 @@
 typedef enum {
     PETGFX_ANIM_IDLE,      /* happy, bobbing, (can add blinking after test run)     */
     PETGFX_ANIM_EATING,    /* one-shot reaction after Pet_Feed()       */
-    PETGFX_ANIM_SCARED,    /* one-shot reaction after Pet_Scare()      */
+    PETGFX_ANIM_SCARED,    /* one-shot scare or persistent darkness mood */
     PETGFX_ANIM_SAD,       /* hunger or happiness is getting low       */
-    PETGFX_ANIM_SLEEPING,  /* light sensor detects the room is dark(?)              */
+    PETGFX_ANIM_SLEEPING,  /* reserved sleeping animation             */
     PETGFX_ANIM_DEAD,      /* he gone...              */
     PETGFX_ANIM_RAN_AWAY,  /* happiness hit 0; it uses dead fame currently. If time, create its own frames for running away */
     PETGFX_ANIM_COUNT      /* number of animations, not an actual animation */
@@ -35,7 +35,10 @@ void PetGfx_PlayReaction(PetGfxAnim anim, uint32_t now, uint32_t durationMs);
  * stays on screen and above the stat bars. */
 void PetGfx_SetTilt(int16_t dx, int16_t dy);
 
-/* Tell the character whether the room is dark (from the light sensor). */
+/* Keep the scared animation active while the pet is in darkness. */
+void PetGfx_SetScared(bool isScared);
+
+/* Enable or disable the reserved sleeping animation. */
 void PetGfx_SetSleeping(bool sleeping);
 
 #endif
