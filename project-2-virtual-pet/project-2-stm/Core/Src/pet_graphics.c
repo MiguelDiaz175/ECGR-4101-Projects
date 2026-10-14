@@ -89,6 +89,7 @@ static uint32_t reactionEnd = 0U;
 static bool reactionActive = false;
 
 static bool sleeping = false;
+static bool scared = false;
 static bool zzzShown = false;
 
 /* Pixel offset from the accelerometer, set by PetGfx_SetTilt(). */
@@ -249,6 +250,11 @@ static PetGfxAnim ChooseAnimation(Pet *pet, uint32_t now)
         reactionActive = false;
     }
 
+    if (scared)
+    {
+        return PETGFX_ANIM_SCARED;
+    }
+
     if (sleeping)
     {
         return PETGFX_ANIM_SLEEPING;
@@ -269,6 +275,7 @@ void PetGfx_Init(uint32_t now)
     frameIndex = 0U;
     lastFrameTime = now;
     reactionActive = false;
+    scared = false;
     zzzShown = false;
     tiltX = 0;
     tiltY = 0;
@@ -319,6 +326,11 @@ void PetGfx_SetTilt(int16_t dx, int16_t dy)
 {
     tiltX = dx;
     tiltY = dy;
+}
+
+void PetGfx_SetScared(bool isScared)
+{
+    scared = isScared;
 }
 
 void PetGfx_SetSleeping(bool isSleeping)
