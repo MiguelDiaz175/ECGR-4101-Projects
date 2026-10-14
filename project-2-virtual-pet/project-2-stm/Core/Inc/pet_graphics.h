@@ -13,6 +13,7 @@ typedef enum {
     PETGFX_ANIM_SAD,       /* hunger or happiness is getting low       */
     PETGFX_ANIM_SLEEPING,  /* light sensor detects the room is dark(?)              */
     PETGFX_ANIM_DEAD,      /* he gone...              */
+    PETGFX_ANIM_RAN_AWAY,  /* happiness hit 0; it uses dead fame currently. If time, create its own frames for running away */
     PETGFX_ANIM_COUNT      /* number of animations, not an actual animation */
 } PetGfxAnim;
 
@@ -28,6 +29,11 @@ void PetGfx_Update(Pet *pet, uint32_t now);
 /* Play a short reaction (EATING, SCARED) that overrides the mood
  * animation for durationMs. */
 void PetGfx_PlayReaction(PetGfxAnim anim, uint32_t now, uint32_t durationMs);
+
+/* Slide the pet by (dx, dy) pixels from its home spot, e.g. to follow the
+ * accelerometer tilt. Keep dx within +/-48 and dy within +/-20 so the pet
+ * stays on screen and above the stat bars. */
+void PetGfx_SetTilt(int16_t dx, int16_t dy);
 
 /* Tell the character whether the room is dark (from the light sensor). */
 void PetGfx_SetSleeping(bool sleeping);
