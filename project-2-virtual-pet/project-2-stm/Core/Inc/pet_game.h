@@ -21,7 +21,8 @@ typedef struct
 
 void PetGame_Start(uint32_t now);
 void PetGame_Resume(uint32_t now);
-PetGameUpdateResult PetGame_Update(uint32_t now, bool feedRequested);
+PetGameUpdateResult PetGame_Update(uint32_t now, bool feedRequested,
+                                   bool killRequested);
 void PetGame_GetSummary(GameSummary *summary);
 
 #endif

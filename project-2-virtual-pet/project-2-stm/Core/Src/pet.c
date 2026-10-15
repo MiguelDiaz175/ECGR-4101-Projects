@@ -123,6 +123,17 @@ void Pet_DarknessTick(Pet *pet, int happinessLoss)
     }
 }
 
+void Pet_Kill(Pet *pet)
+{
+    /* Instant death from the kill button. An ended game stays as it is. */
+    if (pet->state == PET_DEAD || pet->state == PET_RAN_AWAY)
+    {
+        return;
+    }
+
+    pet->hunger = 0;
+    pet->state = PET_DEAD;
+}
 
 void Pet_Update(Pet *pet)
 {

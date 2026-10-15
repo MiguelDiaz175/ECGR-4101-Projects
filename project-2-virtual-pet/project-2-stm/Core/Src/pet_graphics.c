@@ -1,5 +1,6 @@
 #include "pet_graphics.h"
 #include "pet_sprites.h"
+#include "pet_game_config.h"
 #include "ili9341.h"
 #include <stddef.h>
 
@@ -66,10 +67,11 @@ static const Sprite RAN_AWAY_FRAMES[] = {
     PET_RUN_AWAY_1, PET_RUN_AWAY_2, PET_RUN_AWAY_3, PET_RUN_AWAY_4,
     PET_RUN_AWAY_5, PET_EMPTY, PET_RUN_AWAY_5, PET_EMPTY
 };
-/* Bounce up to the stretch (1-3-1), then wink and laugh (4-5-4). */
+/* Bounce up to the stretch (2-3-2), wink and laugh (4-5-4), then rest on
+ * the plain smile (1) for holdLastMs before the next bounce. */
 static const Sprite HAPPY_FRAMES[] = {
-    PET_HAPPY_1, PET_HAPPY_2, PET_HAPPY_3, PET_HAPPY_2,
-    PET_HAPPY_1, PET_HAPPY_4, PET_HAPPY_5, PET_HAPPY_4
+    PET_HAPPY_2, PET_HAPPY_3, PET_HAPPY_2, PET_HAPPY_1,
+    PET_HAPPY_4, PET_HAPPY_5, PET_HAPPY_4, PET_HAPPY_1
 };
 
 #define COUNT_OF(a) ((uint8_t)(sizeof(a) / sizeof((a)[0])))
@@ -83,7 +85,7 @@ static const PetAnimation ANIMATIONS[PETGFX_ANIM_COUNT] = {
     [PETGFX_ANIM_SLEEPING] = { SLEEPING_FRAMES, COUNT_OF(SLEEPING_FRAMES), 200U,      0U, true  },
     [PETGFX_ANIM_DEAD]     = { DEAD_FRAMES,     COUNT_OF(DEAD_FRAMES),     500U,      0U, true  },
     [PETGFX_ANIM_RAN_AWAY] = { RAN_AWAY_FRAMES, COUNT_OF(RAN_AWAY_FRAMES), 300U,      0U, false },
-    [PETGFX_ANIM_HAPPY]    = { HAPPY_FRAMES,    COUNT_OF(HAPPY_FRAMES),    150U,      0U, true  },
+    [PETGFX_ANIM_HAPPY]    = { HAPPY_FRAMES,    COUNT_OF(HAPPY_FRAMES),    150U,   3000U, true  },
 };
 
 /* Below this, the pet looks sad. */
@@ -278,6 +280,11 @@ static PetGfxAnim ChooseAnimation(Pet *pet, uint32_t now)
         (Pet_GetHappiness(pet) < LOW_STAT_THRESHOLD))
     {
         return PETGFX_ANIM_SAD;
+    }
+
+    if (Pet_GetHappiness(pet) > PET_HAPPY_THRESHOLD)
+    {
+        return PETGFX_ANIM_HAPPY;
     }
 
     return PETGFX_ANIM_IDLE;

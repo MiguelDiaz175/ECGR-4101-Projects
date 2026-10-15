@@ -11,10 +11,9 @@
 #define PET_UPDATE_INTERVAL_MS             2000U
 #define PET_ENDING_SCREEN_MS               3000U
 
-/* Happy animation: plays once each time happiness climbs back up to this
- * value (0..100) from below it, e.g. after feeding or rocking. */
+/* Above this happiness (0..100), the pet plays its happy animation
+ * instead of idle. */
 #define PET_HAPPY_THRESHOLD                   80
-#define PET_HAPPY_ANIMATION_MS             2400U
 
 /* Microphone behavior. */
 #define PET_MICROPHONE_BEHAVIOR_ENABLED       1

@@ -111,14 +111,16 @@ void App_Update(uint32_t now)
 
     case APP_PLAYING:
       /* CENTER opens the pause menu. RIGHT is passed into the game as the
-       * feed request; all sensor work happens inside PetGame_Update(). */
+       * feed request and DOWN as the kill request; all sensor work happens
+       * inside PetGame_Update(). */
       if ((pressed & JOY_CENTER_MASK) != 0U)
       {
         pauseSelection = PAUSE_RESUME;
         state = APP_PAUSED;
         MenuUI_DrawPause(pauseSelection);
       }
-      else if (PetGame_Update(now, (pressed & JOY_RIGHT_MASK) != 0U) ==
+      else if (PetGame_Update(now, (pressed & JOY_RIGHT_MASK) != 0U,
+                              (pressed & JOY_DOWN_MASK) != 0U) ==
                PET_GAME_OVER_READY)
       {
         ShowGameOver();

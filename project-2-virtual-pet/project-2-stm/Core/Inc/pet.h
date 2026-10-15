@@ -21,6 +21,7 @@ void Pet_Feed(Pet *pet);
 void Pet_Scare(Pet *pet);
 void Pet_Comfort(Pet *pet, int happinessGain);
 void Pet_DarknessTick(Pet *pet, int happinessLoss);
+void Pet_Kill(Pet *pet);
 
 int Pet_GetHunger(Pet *pet);
 int Pet_GetHappiness(Pet *pet);

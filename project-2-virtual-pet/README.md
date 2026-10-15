@@ -74,6 +74,7 @@ not 5 V analog inputs.
 | Input or event | Pet response |
 |---|---|
 | Joystick Right | Feed the pet |
+| Joystick Down | Kill the pet instantly (testing shortcut) |
 | Joystick Center | Open the pause menu; resume or return to the main menu |
 | Tilt the board | Move the pet around the screen |
 | Gently rock the board | Increase happiness and play the sleep/comfort animation |
@@ -100,8 +101,9 @@ The pet begins with 100 hunger and 100 happiness.
 - Vertical sprite travel is clamped above the status area, while the Y-axis
   input is amplified so up/down tilt remains responsive without erasing labels.
 - Hunger reaching zero causes the pet to die.
-- When happiness climbs back up to 80 or more (from below 80), the pet plays
-  a short happy animation.
+- Pressing joystick Down during play kills the pet immediately.
+- While happiness is above 80 (and hunger is not low), the pet plays its
+  happy animation instead of idle.
 - Happiness reaching zero causes the pet to run away: it gets angrier,
   flickers, and disappears from the screen.
 - The ending animation remains visible for 3 seconds before the game-over
