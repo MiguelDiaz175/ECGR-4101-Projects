@@ -30,12 +30,14 @@
 /* A sprite is one 64-row character grid from pet_sprites.h. */
 typedef const char *const *Sprite;
 
-/* An animation is a list of frames played in order, then repeated. */
+/* An animation is a list of frames played in order, then repeated
+ * (or, if loops is false, left on the last frame). */
 typedef struct {
     const Sprite *frames;
     uint8_t frameCount;
     uint16_t frameMs;      /* how long each frame stays on screen */
     uint16_t holdLastMs;   /* extra time on the last frame before looping */
+    bool loops;            /* false: play once and stop on the last frame */
 } PetAnimation;
 
 static const Sprite IDLE_FRAMES[] = {
@@ -58,23 +60,30 @@ static const Sprite SLEEPING_FRAMES[] = {
 static const Sprite DEAD_FRAMES[] = {
     PET_DEAD_1
 };
-/* No run-away drawings yet, so it borrows the dead frame. Swap in
- * PET_RAN_AWAY_1, ... here once they exist in pet_sprites.h. */
+/* Gets angrier (1-5), then flickers out and stays gone. 8 frames x 300 ms
+ * finishes before the PET_ENDING_SCREEN_MS (3 s) game-over hand-off. */
 static const Sprite RAN_AWAY_FRAMES[] = {
-    PET_DEAD_1
+    PET_RUN_AWAY_1, PET_RUN_AWAY_2, PET_RUN_AWAY_3, PET_RUN_AWAY_4,
+    PET_RUN_AWAY_5, PET_EMPTY, PET_RUN_AWAY_5, PET_EMPTY
+};
+/* Bounce up to the stretch (1-3-1), then wink and laugh (4-5-4). */
+static const Sprite HAPPY_FRAMES[] = {
+    PET_HAPPY_1, PET_HAPPY_2, PET_HAPPY_3, PET_HAPPY_2,
+    PET_HAPPY_1, PET_HAPPY_4, PET_HAPPY_5, PET_HAPPY_4
 };
 
 #define COUNT_OF(a) ((uint8_t)(sizeof(a) / sizeof((a)[0])))
 
-/* Indexed by PetGfxAnim.          frames            count                        frameMs  holdLastMs */
+/* Indexed by PetGfxAnim.          frames            count                        frameMs  holdLastMs  loops */
 static const PetAnimation ANIMATIONS[PETGFX_ANIM_COUNT] = {
-    [PETGFX_ANIM_IDLE]     = { IDLE_FRAMES,     COUNT_OF(IDLE_FRAMES),     10U,    10000U },
-    [PETGFX_ANIM_EATING]   = { EATING_FRAMES,   COUNT_OF(EATING_FRAMES),   100U,      0U },
-    [PETGFX_ANIM_SCARED]   = { SCARED_FRAMES,   COUNT_OF(SCARED_FRAMES),   100U,      0U },
-    [PETGFX_ANIM_SAD]      = { SAD_FRAMES,      COUNT_OF(SAD_FRAMES),      10U,    10000U },
-    [PETGFX_ANIM_SLEEPING] = { SLEEPING_FRAMES, COUNT_OF(SLEEPING_FRAMES), 200U,      0U },
-    [PETGFX_ANIM_DEAD]     = { DEAD_FRAMES,     COUNT_OF(DEAD_FRAMES),     500U,      0U },
-    [PETGFX_ANIM_RAN_AWAY] = { RAN_AWAY_FRAMES, COUNT_OF(RAN_AWAY_FRAMES), 500U,      0U },
+    [PETGFX_ANIM_IDLE]     = { IDLE_FRAMES,     COUNT_OF(IDLE_FRAMES),     10U,    10000U, true  },
+    [PETGFX_ANIM_EATING]   = { EATING_FRAMES,   COUNT_OF(EATING_FRAMES),   100U,      0U, true  },
+    [PETGFX_ANIM_SCARED]   = { SCARED_FRAMES,   COUNT_OF(SCARED_FRAMES),   100U,      0U, true  },
+    [PETGFX_ANIM_SAD]      = { SAD_FRAMES,      COUNT_OF(SAD_FRAMES),      10U,    10000U, true  },
+    [PETGFX_ANIM_SLEEPING] = { SLEEPING_FRAMES, COUNT_OF(SLEEPING_FRAMES), 200U,      0U, true  },
+    [PETGFX_ANIM_DEAD]     = { DEAD_FRAMES,     COUNT_OF(DEAD_FRAMES),     500U,      0U, true  },
+    [PETGFX_ANIM_RAN_AWAY] = { RAN_AWAY_FRAMES, COUNT_OF(RAN_AWAY_FRAMES), 300U,      0U, false },
+    [PETGFX_ANIM_HAPPY]    = { HAPPY_FRAMES,    COUNT_OF(HAPPY_FRAMES),    150U,      0U, true  },
 };
 
 /* Below this, the pet looks sad. */
@@ -310,6 +319,10 @@ void PetGfx_Update(Pet *pet, uint32_t now)
         currentAnim = wanted;
         frameIndex = 0U;
         lastFrameTime = now;
+    }
+    else if (!anim->loops && (frameIndex == (anim->frameCount - 1U)))
+    {
+        /* One-shot animation finished: stay on its last frame. */
     }
     else if ((now - lastFrameTime) >= showFor)
     {

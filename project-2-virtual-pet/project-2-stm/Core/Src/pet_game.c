@@ -25,6 +25,9 @@ static uint32_t statSampleCount = 0U;
 static uint32_t endingTime = 0U;
 static bool endingStarted = false;
 
+/* Happiness after the previous update, to spot it crossing the threshold. */
+static int previousHappiness = 0;
+
 #if PET_MICROPHONE_BEHAVIOR_ENABLED
 static uint32_t lastMicSample = 0U;
 #endif
@@ -49,6 +52,7 @@ static int16_t TiltToPixels(int32_t counts, int32_t limit);
 static bool UpdateMotion(uint32_t now);
 static bool UpdateLight(uint32_t now);
 static void UpdateMicrophone(uint32_t now);
+static void CheckHappyThreshold(uint32_t now);
 
 void PetGame_Start(uint32_t now)
 {
@@ -79,6 +83,7 @@ void PetGame_Start(uint32_t now)
   happinessTotal = (uint32_t)Pet_GetHappiness(&pet);
   statSampleCount = 1U;
   lastPetUpdate = now;
+  previousHappiness = Pet_GetHappiness(&pet);
 
   DrawPetScreen(now);
   UpdateStatBars();
@@ -167,7 +172,22 @@ PetGameUpdateResult PetGame_Update(uint32_t now, bool feedRequested)
     UpdateStatBars();
   }
 
+  CheckHappyThreshold(now);
   return PET_GAME_RUNNING;
+}
+
+static void CheckHappyThreshold(uint32_t now)
+{
+  /* Celebrate only on the upward crossing, so a pet that simply stays happy
+   * keeps its normal idle animation instead of looping this reaction. */
+  int happiness = Pet_GetHappiness(&pet);
+
+  if ((previousHappiness < PET_HAPPY_THRESHOLD) &&
+      (happiness >= PET_HAPPY_THRESHOLD))
+  {
+    PetGfx_PlayReaction(PETGFX_ANIM_HAPPY, now, PET_HAPPY_ANIMATION_MS);
+  }
+  previousHappiness = happiness;
 }
 
 void PetGame_GetSummary(GameSummary *summary)

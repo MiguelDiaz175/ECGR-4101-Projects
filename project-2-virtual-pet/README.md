@@ -100,7 +100,10 @@ The pet begins with 100 hunger and 100 happiness.
 - Vertical sprite travel is clamped above the status area, while the Y-axis
   input is amplified so up/down tilt remains responsive without erasing labels.
 - Hunger reaching zero causes the pet to die.
-- Happiness reaching zero causes the pet to run away.
+- When happiness climbs back up to 80 or more (from below 80), the pet plays
+  a short happy animation.
+- Happiness reaching zero causes the pet to run away: it gets angrier,
+  flickers, and disappears from the screen.
 - The ending animation remains visible for 3 seconds before the game-over
   screen appears.
 

@@ -13,8 +13,9 @@ typedef enum {
     PETGFX_ANIM_SAD,       /* hunger or happiness is getting low       */
     PETGFX_ANIM_SLEEPING,  /* reserved sleeping animation             */
     PETGFX_ANIM_DEAD,      /* he gone...              */
-    PETGFX_ANIM_RAN_AWAY,  /* happiness hit 0; it uses dead fame currently. If time, create its own frames for running away */
-    PETGFX_ANIM_COUNT      /* number of animations, not an actual animation */
+    PETGFX_ANIM_RAN_AWAY,  /* happiness hit 0; gets angry, flickers out, stays gone */
+    PETGFX_ANIM_HAPPY,     /* one-shot reaction when happiness reaches the happy threshold */
+    PETGFX_ANIM_COUNT     /* number of animations, not an actual animation */
 } PetGfxAnim;
 
 /* Draw the first frame. Call after the pet screen background is drawn
@@ -26,7 +27,7 @@ void PetGfx_Init(uint32_t now);
  * Never blocks. */
 void PetGfx_Update(Pet *pet, uint32_t now);
 
-/* Play a short reaction (EATING, SCARED) that overrides the mood
+/* Play a short reaction (EATING, SCARED, SLEEPING, HAPPY) that overrides the mood
  * animation for durationMs. */
 void PetGfx_PlayReaction(PetGfxAnim anim, uint32_t now, uint32_t durationMs);
 
