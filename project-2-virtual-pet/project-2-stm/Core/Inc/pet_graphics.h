@@ -11,7 +11,7 @@ typedef enum {
     PETGFX_ANIM_EATING,    /* one-shot reaction after Pet_Feed()       */
     PETGFX_ANIM_SCARED,    /* one-shot scare or persistent darkness mood */
     PETGFX_ANIM_SAD,       /* hunger or happiness is getting low       */
-    PETGFX_ANIM_SLEEPING,  /* reserved sleeping animation             */
+    PETGFX_ANIM_SLEEPING,  /* being rocked gently                     */
     PETGFX_ANIM_DEAD,      /* he gone...              */
     PETGFX_ANIM_RAN_AWAY,  /* happiness hit 0; gets angry, flickers out, stays gone */
     PETGFX_ANIM_HAPPY,     /* happiness is above PET_HAPPY_THRESHOLD     */
@@ -39,7 +39,7 @@ void PetGfx_SetTilt(int16_t dx, int16_t dy);
 /* Keep the scared animation active while the pet is in darkness. */
 void PetGfx_SetScared(bool isScared);
 
-/* Enable or disable the reserved sleeping animation. */
+/* Show the sleeping animation (set while the pet is being rocked). */
 void PetGfx_SetSleeping(bool sleeping);
 
 #endif

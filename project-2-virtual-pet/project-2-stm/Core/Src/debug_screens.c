@@ -178,7 +178,8 @@ static void UpdateMpuScreen(uint32_t now)
 
   relativeX = (int32_t)x - (int32_t)mpuCenterX;
   relativeY = (int32_t)y - (int32_t)mpuCenterY;
-  blockX = 112 + (relativeX / 256);
+  /* X is negated to match the pet's tilt direction in pet_game.c. */
+  blockX = 112 - (relativeX / 256);
   blockY = 167 + (relativeY / 64);
 
   if (blockX < 22)  { blockX = 22; }

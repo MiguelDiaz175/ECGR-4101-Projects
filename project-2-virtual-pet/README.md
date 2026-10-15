@@ -92,10 +92,11 @@ The pet begins with 100 hunger and 100 happiness.
 - Feeding adds 10 hunger and 3 happiness when the pet is hungry.
 - Feeding while hunger is already full removes 10 happiness.
 - A shake or confirmed loud sound removes 10 happiness.
-- Valid rocking motion restores three happiness points, with a 1.5-second
-  cooldown, and plays the dedicated sleep/comfort animation. The lower movement
-  threshold is tuned to recognize gentle rocking without treating normal
-  sensor noise as interaction.
+- Rocking the board back and forth (each swing at least ~4 degrees, no more
+  than 3 seconds apart) puts the pet to sleep for as long as the rocking
+  continues, and restores three happiness points at most every 1.5 seconds.
+  Swings are measured end to end, so slow, gentle rocking works, while sensor
+  noise or holding the board still at a tilt does not count.
 - Rocking cannot restore happiness while darkness is confirmed; fear takes
   priority and happiness continues to decrease until sufficient light returns.
 - Vertical sprite travel is clamped above the status area, while the Y-axis

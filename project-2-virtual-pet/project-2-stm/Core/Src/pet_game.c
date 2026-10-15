@@ -56,6 +56,7 @@ void PetGame_Start(uint32_t now)
    * still contain information from the previous session. */
   Pet_Init(&pet);
   RockingBehavior_Init();
+  PetGfx_SetSleeping(false);
 
 #if PET_MICROPHONE_BEHAVIOR_ENABLED
   lastMicSample = now;
@@ -200,9 +201,11 @@ static void DrawPetScreen(uint32_t now)
   PetGfx_SetScared(petInDarkness);
   PetGfx_Update(&pet, now);
 
-  ILI9341_DrawString(10, 5, "RIGHT: FEED",
+  ILI9341_DrawString(4, 5, "RIGHT: FEED",
                      ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
-  ILI9341_DrawString(130, 5, "CENTER: MENU",
+  ILI9341_DrawString(86, 5, "CENTER: MENU",
+                     ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
+  ILI9341_DrawString(172, 5, "DOWN: KILL",
                      ILI9341_COLOR_YELLOW, ILI9341_COLOR_BLACK, 1);
 
   ILI9341_DrawString(20, 218, "HUNGER",
@@ -277,6 +280,7 @@ static bool UpdateMotion(uint32_t now)
   {
     mpuConnected = false;
     PetGfx_SetTilt(0, 0);
+    PetGfx_SetSleeping(false);
     return false;
   }
 
@@ -310,11 +314,13 @@ static bool UpdateMotion(uint32_t now)
   }
   else if (RockingBehavior_Update(&pet, x, y, now))
   {
-    /* Rocking is the second complete pet action: it raises happiness and
-     * plays its own non-blocking sleep animation. */
-    PetGfx_PlayReaction(PETGFX_ANIM_SLEEPING, now, 1400U);
+    /* Rocking is the second complete pet action: it raises happiness. */
     UpdateStatBars();
   }
+
+  /* The pet sleeps for as long as it keeps being rocked. A shake or darkness
+   * resets the detector above, which wakes it up. */
+  PetGfx_SetSleeping(RockingBehavior_IsRocking(now));
 
   return false;
 }
