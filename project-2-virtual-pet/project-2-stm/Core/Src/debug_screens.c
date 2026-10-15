@@ -5,6 +5,11 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+/*
+ * Each debug screen has an Enter function and an Update function.
+ * Enter draws labels and borders once. Update changes only live values and
+ * moving shapes, reducing SPI traffic and screen flicker.
+ */
 static uint32_t lastUpdate = 0U;
 static uint32_t lastMpuTextUpdate = 0U;
 static bool mpuConnected = false;
@@ -25,6 +30,7 @@ static uint16_t MapLightBarWidth(uint16_t raw);
 
 void DebugScreens_Enter(DebugScreen screen)
 {
+  /* Translate the screen enum selected in app.c into the matching setup. */
   switch (screen)
   {
     case DEBUG_SCREEN_MPU:
@@ -46,6 +52,8 @@ void DebugScreens_Enter(DebugScreen screen)
 
 void DebugScreens_Update(DebugScreen screen, uint32_t now)
 {
+  /* This function is called continuously, but each live screen uses its own
+   * timer to decide when a new hardware sample is actually needed. */
   switch (screen)
   {
     case DEBUG_SCREEN_MPU:
@@ -159,6 +167,8 @@ static void UpdateMpuScreen(uint32_t now)
     return;
   }
 
+  /* The first good reading becomes the visual center. Pressing UP clears the
+   * flag, causing the current physical position to become the new center. */
   if (!mpuCalibrated)
   {
     mpuCenterX = x;
@@ -322,6 +332,8 @@ static void EnterGraphicsScreen(void)
 
 static uint16_t MapLightBarWidth(uint16_t raw)
 {
+  /* The ALS-PT19 produces relatively small values indoors. Piecewise scaling
+   * gives low readings more screen space than a simple raw/4095 mapping. */
   uint32_t level = (raw > 8U) ? (uint32_t)raw - 8U : 0U;
 
   if (level <= 64U)

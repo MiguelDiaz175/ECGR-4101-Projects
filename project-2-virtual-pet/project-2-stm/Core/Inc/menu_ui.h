@@ -5,6 +5,8 @@
 
 #include "pet_game.h"
 
+/* The numeric order of each enum matches the top-to-bottom drawing order.
+ * ITEM_COUNT is not a real option; app.c uses it for wraparound math. */
 typedef enum
 {
   MAIN_MENU_START_GAME,

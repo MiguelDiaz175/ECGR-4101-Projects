@@ -3,9 +3,14 @@
 #include "ili9341.h"
 #include <stdio.h>
 
+/*
+ * Menu drawing is intentionally separate from menu behavior. This file only
+ * paints pixels; app.c decides what a selection actually does.
+ */
 static void DrawMenuItem(uint8_t index, uint8_t selection, uint16_t y,
                          uint16_t textX, const char *label)
 {
+  /* The selected item gets a blue background. Every other item is black. */
   uint16_t background = (selection == index) ?
                         ILI9341_COLOR_BLUE : ILI9341_COLOR_BLACK;
 
@@ -29,6 +34,9 @@ void MenuUI_DrawMain(MainMenuSelection selection)
 
 void MenuUI_DrawMainItems(MainMenuSelection selection)
 {
+  /* These "Items" functions redraw only the buttons. App uses them when the
+   * highlight moves so the unchanged title and instructions are not sent
+   * over SPI again. */
   DrawMenuItem(MAIN_MENU_START_GAME, selection, 95, 60, "START GAME");
   DrawMenuItem(MAIN_MENU_DEBUG, selection, 155, 84, "DEBUG");
 }

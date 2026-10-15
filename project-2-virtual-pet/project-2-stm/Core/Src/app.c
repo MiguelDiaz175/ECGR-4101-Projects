@@ -6,6 +6,11 @@
 #include "pet_game.h"
 #include <stdbool.h>
 
+/*
+ * This file is the traffic controller for the whole application.
+ * Only one AppState is active at a time, so joystick input is handled by the
+ * screen the user is currently viewing instead of every screen at once.
+ */
 typedef enum
 {
   APP_MAIN_MENU,
@@ -23,6 +28,8 @@ static GameOverSelection gameOverSelection = GAME_OVER_RESTART;
 static PauseMenuSelection pauseSelection = PAUSE_RESUME;
 static DebugScreen activeDebugScreen = DEBUG_SCREEN_MPU;
 
+/* Move one item through a menu. Going above the first item wraps to the last,
+ * and going below the last item wraps back to the first. */
 static uint8_t MoveSelection(uint8_t selection, uint8_t count, int8_t direction)
 {
   if (direction < 0)
@@ -66,8 +73,12 @@ void App_Init(void)
 
 void App_Update(uint32_t now)
 {
+  /* GetPressed returns only NEW button presses, not a button that is still
+   * being held. This prevents one press from racing through several items. */
   uint8_t pressed = JoystickInput_GetPressed(now);
 
+  /* main() calls this function repeatedly. The current state decides which
+   * block below gets to use this pass through the loop. */
   switch (state)
   {
     case APP_MAIN_MENU:
@@ -99,6 +110,8 @@ void App_Update(uint32_t now)
       break;
 
     case APP_PLAYING:
+      /* CENTER opens the pause menu. RIGHT is passed into the game as the
+       * feed request; all sensor work happens inside PetGame_Update(). */
       if ((pressed & JOY_CENTER_MASK) != 0U)
       {
         pauseSelection = PAUSE_RESUME;
@@ -202,6 +215,8 @@ void App_Update(uint32_t now)
       break;
 
     case APP_DEBUG_SCREEN:
+      /* CENTER always provides a simple way back. Other input is forwarded
+       * to the currently selected hardware test screen. */
       if ((pressed & JOY_CENTER_MASK) != 0U)
       {
         state = APP_DEBUG_MENU;

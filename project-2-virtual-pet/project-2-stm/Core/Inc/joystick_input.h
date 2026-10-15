@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+/* Each direction owns one bit, so several pressed directions can share one
+ * uint8_t result. Test a direction with: (pressed & JOY_UP_MASK) != 0U. */
 #define JOY_LEFT_MASK   (1U << 0)
 #define JOY_CENTER_MASK (1U << 1)
 #define JOY_DOWN_MASK   (1U << 2)

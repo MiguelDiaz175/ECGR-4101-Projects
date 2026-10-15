@@ -1,6 +1,12 @@
 #include "debug_peripherals.h"
 #include "main.h"
 
+/*
+ * Low-level hardware access lives here so the game does not need to know
+ * about ADC registers, I2C addresses, or byte order. Higher-level code asks
+ * for a light, sound, or acceleration reading through simple functions.
+ */
+/* STM32 HAL expects the 7-bit I2C address shifted left by one bit. */
 #define MPU9250_ADDRESS          (0x68U << 1)
 #define MPU9250_REG_SMPLRT_DIV   0x19U
 #define MPU9250_REG_CONFIG       0x1AU
@@ -49,6 +55,7 @@ static bool I2C2_Init(void)
   __HAL_RCC_I2C2_FORCE_RESET();
   __HAL_RCC_I2C2_RELEASE_RESET();
 
+  /* Fill the HAL handle with the bus settings before asking HAL to start it. */
   hi2c2.Instance = I2C2;
   /* Approximately 100 kHz with the current 28.4 MHz PCLK1. */
   hi2c2.Init.Timing = 0x30321E25U;
@@ -104,6 +111,8 @@ static void ADC1_InitDirect(void)
     __NOP();
   }
 
+  /* Calibration measures internal ADC error. Hardware clears ADCAL when the
+   * calibration is finished, so the empty loop waits for that event. */
   ADC1->CR |= ADC_CR_ADCAL;
   while ((ADC1->CR & ADC_CR_ADCAL) != 0U)
   {
@@ -123,6 +132,8 @@ static void ADC1_InitDirect(void)
 
 static uint16_t ADC1_ReadDirect(uint32_t channel)
 {
+  /* Select one ADC channel, start one conversion, wait for End Of Conversion,
+   * then read the 12-bit result (0 through 4095). */
   ADC1->SQR1 = (channel << ADC_SQR1_SQ1_Pos);
   ADC1->CR |= ADC_CR_ADSTART;
   while ((ADC1->ISR & ADC_ISR_EOC) == 0U)
@@ -190,6 +201,7 @@ bool MPU9250_ReadAcceleration(int16_t *x, int16_t *y, int16_t *z)
     return false;
   }
 
+  /* Each signed axis is sent high byte first. Join each pair into int16_t. */
   *x = (int16_t)(((uint16_t)data[0] << 8) | data[1]);
   *y = (int16_t)(((uint16_t)data[2] << 8) | data[3]);
   *z = (int16_t)(((uint16_t)data[4] << 8) | data[5]);
@@ -207,6 +219,8 @@ uint16_t Microphone_ReadLevel(uint16_t *average)
   uint16_t maximum = 0U;
   uint32_t total = 0U;
 
+  /* Audio is an AC waveform. Peak-to-peak (highest minus lowest sample) is a
+   * simple estimate of loudness even when the waveform has a DC offset. */
   for (uint32_t sample = 0U; sample < MICROPHONE_SAMPLE_COUNT; sample++)
   {
     uint16_t value = ADC1_ReadDirect(MICROPHONE_ADC_CHANNEL);
@@ -233,6 +247,7 @@ uint16_t LightSensor_ReadLevel(void)
 {
   uint32_t total = 0U;
 
+  /* Average several readings to smooth small ADC and electrical variations. */
   for (uint32_t sample = 0U; sample < LIGHT_SAMPLE_COUNT; sample++)
   {
     total += ADC1_ReadDirect(LIGHT_ADC_CHANNEL);

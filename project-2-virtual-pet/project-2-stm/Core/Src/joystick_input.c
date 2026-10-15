@@ -8,6 +8,8 @@
 static uint8_t previousState = 0U;
 static uint32_t lastEventTime = 0U;
 
+/* Read all five GPIO pins and pack their states into one byte. Bit masks make
+ * it possible to report more than one direction without five return values. */
 static uint8_t ReadJoystick(void)
 {
   uint8_t state = 0U;
@@ -46,9 +48,13 @@ void JoystickInput_Init(void)
 uint8_t JoystickInput_GetPressed(uint32_t now)
 {
   uint8_t current = ReadJoystick();
+  /* A bit is "pressed" only if it is on now and was off last time. This is
+   * called rising-edge detection and turns a long hold into one menu event. */
   uint8_t pressed = current & (uint8_t)(~previousState);
 
   previousState = current;
+  /* Real switches bounce electrically for a short time. Ignore new edges for
+   * 150 ms after an accepted press so one click is not counted several times. */
   if ((pressed != 0U) && ((now - lastEventTime) >= JOYSTICK_DEBOUNCE_MS))
   {
     lastEventTime = now;

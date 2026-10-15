@@ -1,5 +1,10 @@
 #include "pet.h"
 
+/*
+ * The Pet module contains only game rules. It does not draw the LCD or read
+ * hardware, which makes the rules easier to understand and change safely.
+ * Hunger and happiness are always kept in the documented 0..100 range.
+ */
 void Pet_Init(Pet *pet)
 {
     pet->hunger = 100;
@@ -72,6 +77,7 @@ void Pet_Scare(Pet *pet)
 
 void Pet_Comfort(Pet *pet, int happinessGain)
 {
+    /* Ignore comfort after the game has ended and reject invalid gains. */
     if (pet->state == PET_DEAD ||
         pet->state == PET_RAN_AWAY)
     {
@@ -120,7 +126,8 @@ void Pet_DarknessTick(Pet *pet, int happinessLoss)
 
 void Pet_Update(Pet *pet)
 {
-      /* Terminal states do not change during normal gameplay. */
+    /* One call represents one scheduled game tick (currently every 2 s).
+     * Terminal states do not change during normal gameplay. */
     if (pet->state == PET_DEAD ||
         pet->state == PET_RAN_AWAY)
     {
@@ -166,6 +173,7 @@ void Pet_Update(Pet *pet)
 
 int Pet_GetHunger(Pet *pet)
 {
+    /* Getter functions keep other modules from depending on struct details. */
     return pet->hunger;
 }
 

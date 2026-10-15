@@ -8,8 +8,16 @@
 #include "rocking_behavior.h"
 #include <stddef.h>
 
+/*
+ * This module owns one complete game session. It connects the simple Pet
+ * data model to timers, sensors, animations, and the two status bars.
+ *
+ * Nothing here deliberately waits or sleeps. Each update checks HAL_GetTick()
+ * timestamps and performs only work that is due, keeping the UI responsive.
+ */
 static Pet pet;
 
+/* Normal stat timing and values used to calculate the game-over averages. */
 static uint32_t lastPetUpdate = 0U;
 static uint32_t hungerTotal = 0U;
 static uint32_t happinessTotal = 0U;
@@ -30,6 +38,8 @@ static uint32_t darknessCandidateTime = 0U;
 static uint32_t lastDarknessPenalty = 0U;
 static bool petInDarkness = false;
 
+/* -1 means the bar has not been drawn yet. Afterwards these values let us
+ * redraw only the small piece that changed instead of the full LCD. */
 static int previousHungerWidth = -1;
 static int previousHappinessWidth = -1;
 
@@ -42,6 +52,8 @@ static void UpdateMicrophone(uint32_t now);
 
 void PetGame_Start(uint32_t now)
 {
+  /* A new session must reset BOTH the pet and every timer/detector that may
+   * still contain information from the previous session. */
   Pet_Init(&pet);
   RockingBehavior_Init();
 
@@ -100,8 +112,11 @@ void PetGame_Resume(uint32_t now)
 
 PetGameUpdateResult PetGame_Update(uint32_t now, bool feedRequested)
 {
+  /* Animation comes first so it advances even when no input event occurs. */
   PetGfx_Update(&pet, now);
 
+  /* A terminal pet remains visible briefly before App switches to the
+   * separate game-over menu. */
   if ((Pet_GetState(&pet) == PET_DEAD) ||
       (Pet_GetState(&pet) == PET_RAN_AWAY))
   {
@@ -118,6 +133,8 @@ PetGameUpdateResult PetGame_Update(uint32_t now, bool feedRequested)
     return PET_GAME_RUNNING;
   }
 
+  /* These helpers return true only if their action caused a terminal state.
+   * Stop this update immediately in that case. */
   if (UpdateMotion(now) || UpdateLight(now))
   {
     return PET_GAME_RUNNING;
@@ -138,6 +155,8 @@ PetGameUpdateResult PetGame_Update(uint32_t now, bool feedRequested)
 
   UpdateMicrophone(now);
 
+  /* Unsigned subtraction also continues to work when the millisecond counter
+   * eventually wraps back to zero. */
   if ((now - lastPetUpdate) >= PET_UPDATE_INTERVAL_MS)
   {
     lastPetUpdate = now;
@@ -193,6 +212,8 @@ static void UpdateBar(int y, int width, int *previousWidth)
     return;
   }
 
+  /* First draw: paint the complete green portion. Later draws touch only the
+   * pixels that grew or shrank, which is much faster over SPI. */
   if (*previousWidth < 0)
   {
     ILI9341_FillRect(20, y, width, 15, ILI9341_COLOR_GREEN);
@@ -219,6 +240,9 @@ static void UpdateStatBars(void)
 
 static int16_t TiltToPixels(int32_t counts, int32_t limit)
 {
+  /* Convert raw accelerometer counts into an LCD offset. One g reaches the
+   * requested limit, then the result is clamped and snapped to 4-pixel steps
+   * to prevent tiny sensor noise from constantly redrawing the sprite. */
   int32_t pixels = (counts * limit) / PET_MPU_COUNTS_PER_G;
 
   if (pixels > limit)  { pixels = limit; }
@@ -251,6 +275,8 @@ static bool UpdateMotion(uint32_t now)
                  TiltToPixels((int32_t)y * PET_TILT_Y_SENSITIVITY,
                               PET_TILT_MAX_Y));
 
+  /* Compare squared magnitudes so the MCU does not need an expensive square
+   * root. x*x + y*y + z*z is the total acceleration squared. */
   magnitudeSq = (uint32_t)((int32_t)x * x) +
                 (uint32_t)((int32_t)y * y) +
                 (uint32_t)((int32_t)z * z);
@@ -295,6 +321,8 @@ static bool UpdateLight(uint32_t now)
   lastLightSample = now;
   lightLevel = LightSensor_ReadLevel();
 
+  /* There are separate enter and exit thresholds (hysteresis). That gap keeps
+   * a noisy reading near the boundary from rapidly toggling the mood. */
   if (!petInDarkness)
   {
     if (lightLevel <= PET_DARK_ENTER_ADC)
@@ -303,6 +331,8 @@ static bool UpdateLight(uint32_t now)
       {
         darknessCandidateTime = now;
       }
+      /* A low reading must remain low for a while. A hand passing over the
+       * sensor for one sample therefore does not count as darkness. */
       else if ((now - darknessCandidateTime) >= PET_DARK_CONFIRM_MS)
       {
         petInDarkness = true;
