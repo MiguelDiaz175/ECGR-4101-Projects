@@ -41,6 +41,7 @@
 #endif
 #include "pet.h"
 #include "pet_graphics.h"
+#include "rocking_behavior.h"
 #include <stdio.h>
 
 /* Private variables ---------------------------------------------------------*/
@@ -552,6 +553,7 @@ static void Game_Start(void)
 
   /* Reset the pet's stats and state. */
   Pet_Init(&myPet);
+  RockingBehavior_Init();
 
 #if ENABLE_MICROPHONE_BEHAVIOR
   lastMicSample = now;
@@ -712,17 +714,24 @@ static bool PetMotion_Update(uint32_t now)
   magnitudeSq = (uint32_t)((int32_t)x * x) + (uint32_t)((int32_t)y * y) +
                 (uint32_t)((int32_t)z * z);
 
-  if ((magnitudeSq > (SHAKE_THRESHOLD * SHAKE_THRESHOLD)) &&
-      ((now - lastShakeTime) >= SHAKE_COOLDOWN))
+  if (magnitudeSq > (SHAKE_THRESHOLD * SHAKE_THRESHOLD))
   {
-    lastShakeTime = now;
-    Pet_Scare(&myPet);
-    PetGfx_PlayReaction(PETGFX_ANIM_SCARED, now, 1000U);
-
-    if (Pet_GetState(&myPet) == PET_RAN_AWAY)
+    RockingBehavior_ResetMotion(x, y);
+    if ((now - lastShakeTime) >= SHAKE_COOLDOWN)
     {
-      return true;
+      lastShakeTime = now;
+      Pet_Scare(&myPet);
+      PetGfx_PlayReaction(PETGFX_ANIM_SCARED, now, 1000U);
+
+      if (Pet_GetState(&myPet) == PET_RAN_AWAY)
+      {
+        return true;
+      }
+      PetScreen_UpdateBars();
     }
+  }
+  else if (RockingBehavior_Update(&myPet, x, y, now))
+  {
     PetScreen_UpdateBars();
   }
 

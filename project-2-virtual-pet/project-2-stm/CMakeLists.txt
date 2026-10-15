@@ -48,6 +48,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/microphone_behavior.c
     Core/Src/pet.c
     Core/Src/pet_graphics.c
+    Core/Src/rocking_behavior.c
     Core/Src/main.c
 )
 
