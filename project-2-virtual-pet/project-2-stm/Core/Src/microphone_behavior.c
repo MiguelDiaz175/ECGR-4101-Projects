@@ -1,19 +1,21 @@
 #include "microphone_behavior.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
-#define MIC_BEHAVIOR_UPDATE_INTERVAL 2000U
-#define MIC_BEHAVIOR_LOUD_CONFIRM_SAMPLES 5U
+#define MIC_BEHAVIOR_CONFIRM_SAMPLES 3U
 
-static uint32_t lastBehaviorUpdate = 0U;
-static uint16_t peakSoundLevel = 0U;
 static uint8_t loudSampleCount = 0U;
+static uint32_t lastScareTime = 0U;
+static bool hasScared = false;
+static bool loudEventHandled = false;
 
-void MicrophoneBehavior_Init(uint32_t now)
+void MicrophoneBehavior_Init(void)
 {
-  lastBehaviorUpdate = now;
-  peakSoundLevel = 0U;
   loudSampleCount = 0U;
+  lastScareTime = 0U;
+  hasScared = false;
+  loudEventHandled = false;
 }
 
 MicrophoneBehaviorResult MicrophoneBehavior_Update(Pet *pet,
@@ -25,44 +27,40 @@ MicrophoneBehaviorResult MicrophoneBehavior_Update(Pet *pet,
     return MIC_BEHAVIOR_NO_CHANGE;
   }
 
-  if (soundLevel > peakSoundLevel)
-  {
-    peakSoundLevel = soundLevel;
-  }
-  if (soundLevel >= MIC_BEHAVIOR_LOUD_THRESHOLD)
-  {
-    if (loudSampleCount < MIC_BEHAVIOR_LOUD_CONFIRM_SAMPLES)
-    {
-      loudSampleCount++;
-    }
-  }
-  else
+  if (soundLevel < MIC_BEHAVIOR_LOUD_THRESHOLD)
   {
     loudSampleCount = 0U;
+    if (soundLevel < MIC_BEHAVIOR_REARM_THRESHOLD)
+    {
+      loudEventHandled = false;
+    }
+    return MIC_BEHAVIOR_NO_CHANGE;
   }
 
-  if ((now - lastBehaviorUpdate) < MIC_BEHAVIOR_UPDATE_INTERVAL)
+  if (loudEventHandled)
   {
     return MIC_BEHAVIOR_NO_CHANGE;
   }
 
-  lastBehaviorUpdate = now;
-  soundLevel = peakSoundLevel;
-  peakSoundLevel = 0U;
-
-  if (loudSampleCount >= MIC_BEHAVIOR_LOUD_CONFIRM_SAMPLES)
+  if (loudSampleCount < MIC_BEHAVIOR_CONFIRM_SAMPLES)
   {
-    loudSampleCount = 0U;
-    Pet_Scare(pet);
-    return MIC_BEHAVIOR_SCARED;
+    loudSampleCount++;
   }
+
+  if (loudSampleCount < MIC_BEHAVIOR_CONFIRM_SAMPLES)
+  {
+    return MIC_BEHAVIOR_NO_CHANGE;
+  }
+
+  if (hasScared && ((now - lastScareTime) < MIC_BEHAVIOR_SCARE_COOLDOWN_MS))
+  {
+    return MIC_BEHAVIOR_NO_CHANGE;
+  }
+
   loudSampleCount = 0U;
-
-  if (soundLevel > MIC_BEHAVIOR_SILENCE_THRESHOLD)
-  {
-    Pet_Comfort(pet);
-    return MIC_BEHAVIOR_COMFORTED;
-  }
-
-  return MIC_BEHAVIOR_NO_CHANGE;
+  loudEventHandled = true;
+  lastScareTime = now;
+  hasScared = true;
+  Pet_Scare(pet);
+  return MIC_BEHAVIOR_SCARED;
 }

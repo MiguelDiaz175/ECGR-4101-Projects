@@ -35,7 +35,7 @@
 #include "ili9341.h"
 #include "gfx01m2_conf.h"
 #include "debug_peripherals.h"
-#define ENABLE_MICROPHONE_BEHAVIOR 0
+#define ENABLE_MICROPHONE_BEHAVIOR 1
 #if ENABLE_MICROPHONE_BEHAVIOR
 #include "microphone_behavior.h"
 #endif
@@ -557,7 +557,7 @@ static void Game_Start(void)
 
 #if ENABLE_MICROPHONE_BEHAVIOR
   lastMicSample = now;
-  MicrophoneBehavior_Init(now);
+  MicrophoneBehavior_Init();
 #endif
 
     /* Start the accelerometer. If it isn't wired up, the game still runs;
