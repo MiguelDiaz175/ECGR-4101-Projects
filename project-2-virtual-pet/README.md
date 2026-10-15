@@ -208,12 +208,8 @@ The repository history identifies the following contributors and work:
 ## AI assistance
 
 OpenAI Codex assisted with diagnosing hardware-facing behavior, refactoring the
-application into focused C modules, reviewing assignment compliance, and
-drafting fixes for sensor tuning, sprite bounds, and menu flow. The team remains
-responsible for checking pins and peripheral handles against the STM32 project,
-testing every generated change on the physical board, understanding the code,
-and documenting in the presentation any AI suggestion that had to be corrected
-or rejected.
+application into focused C modules,  and
+drafting fixes for sensor tuning, sprite bounds, and menu flow. 
 
 ## Building
 
@@ -262,11 +258,4 @@ screen with the sensor covered and uncovered. Adjust the darkness thresholds
 in `pet_game_config.h` so the covered value is below `PET_DARK_ENTER_ADC` and
 the normal room value is above `PET_DARK_EXIT_ADC`.
 
-## Current limitations
 
-- The run-away ending currently reuses the dead sprite until a dedicated
-  run-away animation is added.
-- Sensor thresholds depend on the exact modules, supply voltage, physical
-  mounting, and room conditions, so final calibration should be performed on
-  the assembled hardware.
-- The project does not use a speaker or generate audio.
