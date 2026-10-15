@@ -44,12 +44,16 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    Core/Src/app.c
     Core/Src/debug_peripherals.c
+    Core/Src/debug_screens.c
+    Core/Src/joystick_input.c
+    Core/Src/menu_ui.c
     Core/Src/microphone_behavior.c
     Core/Src/pet.c
+    Core/Src/pet_game.c
     Core/Src/pet_graphics.c
     Core/Src/rocking_behavior.c
-    Core/Src/main.c
 )
 
 # Add include paths

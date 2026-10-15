@@ -2,8 +2,6 @@
 
 #include <stddef.h>
 
-#define ROCKING_CONFIRM_SAMPLES 2U
-
 static int16_t previousX = 0;
 static int16_t previousY = 0;
 static uint32_t lastComfortTime = 0U;
@@ -79,6 +77,6 @@ bool RockingBehavior_Update(Pet *pet, int16_t x, int16_t y, uint32_t now)
 
   movementSamples = 0U;
   lastComfortTime = now;
-  Pet_Comfort(pet);
+  Pet_Comfort(pet, ROCKING_HAPPINESS_GAIN);
   return true;
 }

@@ -19,6 +19,9 @@
 #define AREA_BG       ILI9341_COLOR_BLACK
 #define PET_X         ((ILI9341_WIDTH - SPRITE_PX) / 2U)   /* 56 */
 #define PET_Y         60U                                  /* ends at y = 188 */
+#define PET_TILT_X_LIMIT 48
+/* PET_Y + 28 + SPRITE_PX = 216, leaving two rows before HUNGER at 218. */
+#define PET_TILT_Y_LIMIT 28
 
 /* Right of the sprite box, so redrawing the sprite never erases the Zs. */
 #define ZZZ_X         (PET_X + SPRITE_PX + 2U)   /* 186 */
@@ -204,10 +207,9 @@ static void Render(void)
 {
     Sprite sprite = ANIMATIONS[currentAnim].frames[frameIndex];
 
-    /* A sleeping, dead or runaway pet stays put; otherwise it follows the
-     * tilt. (Sleeping also keeps the pet clear of the Zs on the right.) */
-    bool stayPut = (currentAnim == PETGFX_ANIM_SLEEPING) ||
-                   (currentAnim == PETGFX_ANIM_DEAD) ||
+    /* Terminal frames stay put. All living animations, including the
+     * rocking-triggered sleeping animation, continue to follow tilt. */
+    bool stayPut = (currentAnim == PETGFX_ANIM_DEAD) ||
                    (currentAnim == PETGFX_ANIM_RAN_AWAY);
     int16_t x = (int16_t)PET_X + (stayPut ? 0 : tiltX);
     int16_t y = (int16_t)PET_Y + (stayPut ? 0 : tiltY);
@@ -241,6 +243,14 @@ static PetGfxAnim ChooseAnimation(Pet *pet, uint32_t now)
         return PETGFX_ANIM_RAN_AWAY;
     }
 
+    /* Persistent darkness fear has priority over short action reactions.
+     * Rocking and feeding may still change statistics while dark, but the
+     * pet must remain visibly scared until the light returns. */
+    if (scared)
+    {
+        return PETGFX_ANIM_SCARED;
+    }
+
     if (reactionActive)
     {
         if ((int32_t)(now - reactionEnd) < 0)
@@ -248,11 +258,6 @@ static PetGfxAnim ChooseAnimation(Pet *pet, uint32_t now)
             return reactionAnim;
         }
         reactionActive = false;
-    }
-
-    if (scared)
-    {
-        return PETGFX_ANIM_SCARED;
     }
 
     if (sleeping)
@@ -324,6 +329,12 @@ void PetGfx_PlayReaction(PetGfxAnim anim, uint32_t now, uint32_t durationMs)
 
 void PetGfx_SetTilt(int16_t dx, int16_t dy)
 {
+    /* Enforce the renderer's safe drawing region even if a caller is tuned
+     * incorrectly. Otherwise EraseVacated() can paint over the status text. */
+    if (dx > PET_TILT_X_LIMIT)  { dx = PET_TILT_X_LIMIT; }
+    if (dx < -PET_TILT_X_LIMIT) { dx = -PET_TILT_X_LIMIT; }
+    if (dy > PET_TILT_Y_LIMIT)  { dy = PET_TILT_Y_LIMIT; }
+    if (dy < -PET_TILT_Y_LIMIT) { dy = -PET_TILT_Y_LIMIT; }
     tiltX = dx;
     tiltY = dy;
 }

@@ -6,9 +6,11 @@
 
 #include "pet.h"
 
-#define ROCKING_MIN_AXIS_CHANGE 1000
-#define ROCKING_MAX_AXIS_CHANGE 8000
-#define ROCKING_COOLDOWN_MS     2500U
+#define ROCKING_MIN_AXIS_CHANGE   300
+#define ROCKING_MAX_AXIS_CHANGE 10000
+#define ROCKING_CONFIRM_SAMPLES     2U
+#define ROCKING_COOLDOWN_MS      1500U
+#define ROCKING_HAPPINESS_GAIN      3
 
 void RockingBehavior_Init(void);
 void RockingBehavior_ResetMotion(int16_t x, int16_t y);

@@ -31,8 +31,8 @@ void PetGfx_Update(Pet *pet, uint32_t now);
 void PetGfx_PlayReaction(PetGfxAnim anim, uint32_t now, uint32_t durationMs);
 
 /* Slide the pet by (dx, dy) pixels from its home spot, e.g. to follow the
- * accelerometer tilt. Keep dx within +/-48 and dy within +/-20 so the pet
- * stays on screen and above the stat bars. */
+ * accelerometer tilt. The renderer clamps dx to +/-48 and dy to +/-28 so the
+ * sprite and its cleanup rectangles cannot overwrite the status area. */
 void PetGfx_SetTilt(int16_t dx, int16_t dy);
 
 /* Keep the scared animation active while the pet is in darkness. */

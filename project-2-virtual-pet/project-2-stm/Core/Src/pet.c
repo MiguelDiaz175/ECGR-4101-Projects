@@ -70,7 +70,7 @@ void Pet_Scare(Pet *pet)
     }
 }
 
-void Pet_Comfort(Pet *pet)
+void Pet_Comfort(Pet *pet, int happinessGain)
 {
     if (pet->state == PET_DEAD ||
         pet->state == PET_RAN_AWAY)
@@ -78,9 +78,15 @@ void Pet_Comfort(Pet *pet)
         return;
     }
 
-    if (pet->happiness < 100)
+  if (happinessGain <= 0)
+  {
+      return;
+  }
+
+  pet->happiness += happinessGain;
+  if (pet->happiness > 100)
     {
-        pet->happiness++;
+      pet->happiness = 100;
     }
 }
 
