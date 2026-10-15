@@ -191,20 +191,6 @@ and voltage, plus raw MPU data and the microphone signal. These screens are
 intended to make the peripheral effects easy to demonstrate in the required
 video.
 
-## Team members and contributions
-
-The repository history identifies the following contributors and work:
-
-- Miguel Diaz: project setup and build portability, menus and death screen,
-  peripheral and light-sensor integration, gameplay/UI organization and tuning.
-- Aaron: light/microphone behavior fixes and rocking-to-comfort interaction.
-- Shreerama Jayanth: pet data model, hunger/happiness behavior, state-machine
-  work, and meter refresh logic.
-- Marcus Brinkley: LCD graphics/bitmap support, meter/display fixes, feeding,
-  and microphone scare behavior.
-- AJ Carroll: original hand-drawn artwork, converted graphics, and full
-  animation frames.
-
 ## AI assistance
 
 OpenAI Codex assisted with diagnosing hardware-facing behavior, refactoring the
